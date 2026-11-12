@@ -1,6 +1,5 @@
 import { Crm, CrmError } from "./client.js";
 
-/* ---------- shapes (sección 6.1 de la guía) ---------- */
 
 export type ProjectCompany = {
 	name: string;
@@ -44,7 +43,6 @@ export type Project = {
 type Row = Record<string, unknown> & { id: string };
 type List = { rows: Row[]; total: number };
 
-/** Campos propios que el flujo necesita (sección 4.1). Se crean con agentFilled=false. */
 export const REQUIRED_FIELDS: { entity: "CONTACT" | "DEAL"; key: string; type: string }[] = [
 	{ entity: "CONTACT", key: "kairon_lead_id", type: "TEXT" },
 	{ entity: "CONTACT", key: "real_company", type: "TEXT" },
@@ -61,7 +59,6 @@ export const REQUIRED_FIELDS: { entity: "CONTACT" | "DEAL"; key: string; type: s
 	{ entity: "DEAL", key: "next_step", type: "LONG_TEXT" },
 ];
 
-/* ---------- helpers ---------- */
 
 const norm = (value: unknown) => String(value ?? "").trim().toLowerCase();
 
@@ -73,7 +70,6 @@ export function normLinkedin(url: unknown): string {
 		.replace(/\/+$/, "");
 }
 
-/** `fields` llega como array ({key,value}) en el detalle y como record en las filas. */
 export function fieldMap(record: Record<string, unknown> | null | undefined): Record<string, unknown> {
 	const fields = record?.fields;
 	if (Array.isArray(fields)) {
@@ -90,7 +86,6 @@ function clean<T extends Record<string, unknown>>(input: T): Partial<T> {
 	) as Partial<T>;
 }
 
-/** `q` del CRM busca una sola palabra: usar la más larga. */
 function oneWord(text: string): string {
 	return text.split(/[^\p{L}\p{N}.@-]+/u).sort((a, b) => b.length - a.length)[0] ?? "";
 }
@@ -99,7 +94,6 @@ async function search(crm: Crm, entity: "companies" | "contacts" | "deals", q: s
 	return crm.request<List>("POST", `/${entity}/search`, { body: { q, page, pageSize: 100 } });
 }
 
-/* ---------- fields ---------- */
 
 export async function ensureFields(crm: Crm) {
 	const created: string[] = [];
@@ -112,7 +106,6 @@ export async function ensureFields(crm: Crm) {
 				existing.push(`${entity}.${field.key}`);
 				continue;
 			}
-			// La clave se deriva del label: "kairon_campaign_id" -> kairon_campaign_id.
 			await crm.request("POST", "/fields", {
 				body: { entity, label: field.key, type: field.type, agentFilled: false },
 			});
@@ -122,7 +115,6 @@ export async function ensureFields(crm: Crm) {
 	return { created, existing };
 }
 
-/* ---------- companies ---------- */
 
 export async function findCompany(crm: Crm, company: { name: string; domain?: string | null }) {
 	const queries = [company.domain, oneWord(company.name)].filter(Boolean) as string[];
@@ -153,7 +145,6 @@ export async function upsertCompany(crm: Crm, company: ProjectCompany) {
 	return { id: row.id, name: company.name, created: !found };
 }
 
-/* ---------- contacts ---------- */
 
 export type ContactQuery = {
 	kairon_lead_id?: string | null;
@@ -170,11 +161,6 @@ function matchContact(record: Record<string, unknown>, query: ContactQuery): str
 	return null;
 }
 
-/**
- * El filtro `fields` de /contacts/search no filtró en las pruebas y `q` busca una sola
- * palabra: se buscan candidatos por email o apellido y se compara contra el detalle.
- * Sin email ni apellido, recorre hasta 5 páginas de contactos.
- */
 export async function findContact(crm: Crm, query: ContactQuery) {
 	const candidates = new Map<string, Row>();
 	const queries = [query.email, query.last_name ? oneWord(query.last_name) : null].filter(Boolean) as string[];
@@ -221,7 +207,6 @@ export async function upsertContact(crm: Crm, person: ProjectPerson, companyId: 
 				}),
 			})
 		).id;
-	// POST no acepta linkedinUrl ni fields: van por PATCH.
 	const data = clean({
 		linkedinUrl: person.linkedin ?? undefined,
 		email: found ? (person.email ?? undefined) : undefined,
@@ -236,7 +221,6 @@ export async function upsertContact(crm: Crm, person: ProjectPerson, companyId: 
 	return { id, name: `${person.first_name} ${person.last_name ?? ""}`.trim(), created: !found };
 }
 
-/* ---------- deals ---------- */
 
 export async function getDeal(crm: Crm, id: string) {
 	const deal = await crm.request<Row>("GET", `/deals/${id}`);
@@ -297,13 +281,11 @@ export async function attachContact(crm: Crm, dealId: string, contactId: string,
 export async function addContactToDeal(crm: Crm, dealId: string, person: ProjectPerson) {
 	const deal = await getDeal(crm, dealId);
 	if (!deal.company) throw new Error("El Deal no tiene empresa.");
-	// Regla 4.1: el contacto va bajo la empresa del Deal; real_company dice dónde trabaja.
 	const contact = await upsertContact(crm, person, deal.company.id, String(deal.fields.da_number ?? ""));
 	const link = await attachContact(crm, dealId, contact.id, person.role_on_deal);
 	return { ...contact, ...link };
 }
 
-/* ---------- activities ---------- */
 
 export async function listActivities(crm: Crm, where: { dealId?: string; contactId?: string; limit?: number }) {
 	const result = await crm.request<Record<string, unknown>>("GET", "/activities", {
@@ -328,7 +310,6 @@ export async function logActivity(
 	return { id: row.id };
 }
 
-/* ---------- project upsert (secciones 3.3 y 4.2) ---------- */
 
 export async function upsertProject(
 	crm: Crm,

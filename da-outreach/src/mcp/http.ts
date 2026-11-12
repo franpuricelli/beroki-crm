@@ -9,10 +9,6 @@ function sameToken(given: string, expected: string): boolean {
 	return a.length === b.length && timingSafeEqual(a, b);
 }
 
-/**
- * Endpoint MCP sin estado (una instancia por pedido, apta para serverless).
- * Acceso: el token va como último segmento de la URL (/api/mcp/<token>) o como Bearer.
- */
 export async function handleMcp(request: Request, deps: { crm: () => Crm; accessToken: string | undefined; fetcher?: FetchLike }): Promise<Response> {
 	if (!deps.accessToken || deps.accessToken.length < 24) return new Response("MCP_ACCESS_TOKEN no configurado", { status: 503 });
 	const fromPath = decodeURIComponent(new URL(request.url).pathname.split("/").filter(Boolean).pop() ?? "");

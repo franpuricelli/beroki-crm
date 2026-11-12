@@ -11,7 +11,6 @@ export class CrmError extends Error {
 	}
 }
 
-/** Thin client for the trycompai/crm REST bridge (`/rest`, header `x-api-key`). */
 export class Crm {
 	constructor(
 		private readonly base: string,

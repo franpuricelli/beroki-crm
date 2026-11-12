@@ -1,6 +1,5 @@
 import type { FetchLike } from "../src/crm/client.js";
 
-/** CRM falso en memoria que imita las rutas REST usadas (formas tomadas de los contratos de trycompai/crm). */
 export function fakeCrm() {
 	let seq = 0;
 	const id = (prefix: string) => `${prefix}_${++seq}`;
@@ -22,7 +21,6 @@ export function fakeCrm() {
 		for (const entity of ["companies", "contacts", "deals"] as const) {
 			if (method === "POST" && path === `/${entity}/search`) {
 				const q = String(body.q ?? "").toLowerCase();
-				// Como el CRM real: q busca texto en columnas básicas, no en campos custom.
 				const rows = db[entity].filter((r) => !q || [r.name, r.domain, r.firstName, r.lastName, r.email].some((v) => String(v ?? "").toLowerCase().includes(q)));
 				return json({ rows: rows.map((r) => ({ ...r, fields: {} })), total: rows.length, facetCounts: {} });
 			}

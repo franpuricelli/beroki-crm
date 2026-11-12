@@ -1,6 +1,5 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 
-/** Verifica `Kairon-Signature: t=…,v1=…` (HMAC-SHA256 de "{t}.{raw body}" con el secreto whsec_ completo). */
 export function verifyKaironSignature(rawBody: string, header: string | null, secret: string, toleranceSeconds = 300, now = Date.now()): boolean {
 	const parts: Record<string, string> = {};
 	for (const piece of String(header ?? "").split(",")) {

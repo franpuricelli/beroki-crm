@@ -22,10 +22,8 @@ const event = z.looseObject({
 	}),
 });
 
-/** Dedupe fuera del CRM: `claim` devuelve false si el evento ya se había visto. */
 export type Dedupe = { claim(id: string): Promise<boolean>; release(id: string): Promise<void> };
 
-/** Upstash / Vercel KV por REST: SET NX con vencimiento a 7 días. */
 export function upstashDedupe(url: string, token: string, fetcher: FetchLike = fetch): Dedupe {
 	const run = async (command: string[]) => {
 		const response = await fetcher(url, { method: "POST", headers: { authorization: `Bearer ${token}`, "content-type": "application/json" }, body: JSON.stringify(command), signal: AbortSignal.timeout(3000) });
@@ -46,11 +44,6 @@ export type ReceiverDeps = {
 	now?: () => number;
 };
 
-/**
- * Receptor del webhook de Kairon. Verifica firma sobre el body crudo, valida, ignora el
- * evento de prueba, deduplica y dispara el agente B (trigger por API de la tarea programada).
- * Responde rápido: Kairon reintenta todo lo que no sea 2xx en menos de 10 s.
- */
 export async function handleKaironWebhook(request: Request, deps: ReceiverDeps): Promise<Response> {
 	if (request.method !== "POST") return new Response("method not allowed", { status: 405 });
 	if (!deps.secret) return new Response("KAIRON_WEBHOOK_SECRET no configurado", { status: 503 });
@@ -64,7 +57,6 @@ export async function handleKaironWebhook(request: Request, deps: ReceiverDeps):
 	} catch {
 		return new Response("invalid event", { status: 400 });
 	}
-	// Tipos que no se manejan y el evento de prueba: 200 para que no se reintenten.
 	if (parsed.type !== "lead.replied" || !parsed.data.message) return new Response("ignored", { status: 200 });
 	if (parsed.data.object.id === TEST_LEAD_ID) return new Response("test ok", { status: 200 });
 	if (!deps.dedupe || !deps.fire) return new Response("receiver not fully configured", { status: 503 });
@@ -89,7 +81,6 @@ export async function handleKaironWebhook(request: Request, deps: ReceiverDeps):
 		});
 		if (!response.ok) throw new Error(`fire ${response.status}`);
 	} catch {
-		// No se pudo disparar: se libera el evento para que el reintento de Kairon lo procese.
 		await deps.dedupe.release(parsed.id).catch(() => undefined);
 		return new Response("could not start agent", { status: 502 });
 	}
