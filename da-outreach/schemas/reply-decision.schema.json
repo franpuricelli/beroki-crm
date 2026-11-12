@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "reply-decision.schema.json",
+  "title": "Decisión sobre una respuesta de una lead",
+  "type": "object",
+  "required": ["kairon_lead_id", "channel", "category", "summary", "next_steps", "needs_approval"],
+  "additionalProperties": false,
+  "properties": {
+    "event_id": { "type": ["string", "null"], "description": "evt_… si vino por webhook; null si salió del barrido" },
+    "kairon_message_id": { "type": ["string", "null"], "description": "Id del mensaje en Kairon: es la clave de dedupe" },
+    "kairon_lead_id": { "type": "string", "pattern": "^lead_" },
+    "crm_contact_id": { "type": ["string", "null"] },
+    "crm_deal_id": { "type": ["string", "null"] },
+    "channel": { "enum": ["linkedin", "email", "whatsapp"] },
+    "category": {
+      "enum": ["interesado", "pide_call", "pide_info", "deriva_a_otra_persona", "no_es_el_momento", "no_interesado", "baja", "fuera_de_oficina", "ambigua"]
+    },
+    "summary": { "type": "string", "minLength": 1 },
+    "next_steps": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["type"],
+        "properties": {
+          "type": { "enum": ["task", "set_stage", "draft_reply", "calendar_invite", "add_person", "pause_lead", "remove_from_campaign", "exclusion", "note", "notify"] },
+          "subject": { "type": "string" },
+          "due_at": { "type": "string", "format": "date" },
+          "stage": { "type": "string" },
+          "name": { "type": "string" },
+          "company": { "type": "string" }
+        }
+      }
+    },
+    "needs_approval": { "type": "boolean" }
+  }
+}
