@@ -172,12 +172,18 @@ writeFileSync(
 		regions: ["iad1"],
 	}),
 );
+// Vercel's Hobby plan rejects any cron that runs more than once a day, and
+// fails the whole deployment over it. Set GOOGLE_SYNC_CRON_SCHEDULE (e.g.
+// "0 6 * * *") on a Hobby project; Pro keeps the five-minute default.
+const syncCronSchedule =
+	process.env.GOOGLE_SYNC_CRON_SCHEDULE?.trim() || "*/5 * * * *";
+
 writeFileSync(
 	join(outDir, "config.json"),
 	JSON.stringify({
 		version: 3,
 		routes: [{ src: "/(.*)", dest: "/api/index" }],
-		crons: [{ path: "/internal/sync/google", schedule: "*/5 * * * *" }],
+		crons: [{ path: "/internal/sync/google", schedule: syncCronSchedule }],
 	}),
 );
 
