@@ -1,6 +1,7 @@
 import { z } from "zod";
-import type { FetchLike } from "../crm/client.js";
 import { verifyKaironSignature } from "../kairon/signature.js";
+
+type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
 
 export const TEST_LEAD_ID = "lead_00000000000000000000000000";
 

@@ -7,7 +7,7 @@ DAs aprobados (Brisbane) → investigación → CRM → Kairon → respuestas de
 ## Piezas
 - **Scout de DAs** (`automations/scout.prompt.md`): tarea programada, lunes, miércoles y viernes.
 - **Agente de respuestas** (`automations/reply-agent.prompt.md`): una tarea con barrido cada hora; opcionalmente el webhook de Kairon la dispara en tiempo real.
-- **MCP del CRM** (`api/mcp/[token].ts`): herramientas `crm_*` y `developmenti_request`. Es el único camino al CRM: la API key vive en Vercel.
+- **MCP del CRM** (`apps/app/app/api/da-outreach/mcp/[token]/route.ts`): herramientas `crm_*` y `developmenti_request`. Es el único camino al CRM desde los agentes. El token de la URL es una API key del CRM.
 - **Receptor del webhook** (`api/kairon/webhook.ts`): verifica firma, deduplica y dispara al agente de respuestas.
 
 ## Skills
