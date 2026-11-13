@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Suspense } from "react";
 import {
 	PageShell,
+	PageShellActions,
 	PageShellContent,
 	PageShellDescription,
 	PageShellHeader,
@@ -12,8 +13,10 @@ import {
 import { requireSession } from "@/lib/session";
 import { HydrateClient } from "@/lib/trpc/hydrate";
 import { getServerQueryClient, getServerTrpc } from "@/lib/trpc/server";
+import { AddMemberSheet } from "./add-member-sheet";
 import { membersSearchParams } from "./members-search-params";
 import { MembersTable } from "./members-table";
+import { PendingInvites } from "./pending-invites";
 
 export const metadata: Metadata = {
 	title: "Members",
@@ -31,6 +34,10 @@ export default function MembersSettingsPage({
 						Everyone who has access to your CRM.
 					</PageShellDescription>
 				</PageShellHeading>
+
+				<PageShellActions>
+					<AddMemberSheet />
+				</PageShellActions>
 			</PageShellHeader>
 
 			<PageShellContent className="min-h-0">
@@ -54,6 +61,7 @@ async function Members({
 
 	await Promise.all([
 		queryClient.prefetchQuery(trpc.workspace.get.queryOptions()),
+		queryClient.prefetchQuery(trpc.workspace.invites.queryOptions()),
 		queryClient.prefetchQuery(
 			trpc.workspace.members.queryOptions(membersSearchParams.toInput(values)),
 		),
@@ -61,6 +69,7 @@ async function Members({
 
 	return (
 		<HydrateClient>
+			<PendingInvites />
 			<MembersTable />
 		</HydrateClient>
 	);

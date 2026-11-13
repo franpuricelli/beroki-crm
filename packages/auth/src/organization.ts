@@ -37,6 +37,29 @@ export function canManageTracking(role: WorkspaceRole | null): boolean {
 	return isWorkspaceAdmin(role);
 }
 
+export function canInviteMembers(role: WorkspaceRole | null): boolean {
+	return isWorkspaceAdmin(role);
+}
+
+export function normalizeInviteEmail(email: string): string {
+	return email.trim().toLowerCase();
+}
+
+export async function isInvitedEmail(
+	email: string | null | undefined,
+	client: Db = db,
+): Promise<boolean> {
+	const value = email ? normalizeInviteEmail(email) : "";
+	if (!value) return false;
+
+	const invite = await client.workspaceInvite.findUnique({
+		where: { email: value },
+		select: { id: true },
+	});
+
+	return invite !== null;
+}
+
 export async function ensureWorkspaceMembership(
 	userId: string,
 ): Promise<string | undefined> {

@@ -26,6 +26,21 @@ export const setMemberRoleInput = z.object({
 	role: z.enum(WORKSPACE_ROLES),
 });
 
+export const inviteMemberInput = z.object({
+	email: z
+		.string()
+		.trim()
+		.toLowerCase()
+		.pipe(z.email("That is not an email address.")),
+});
+
+export const revokeInviteInput = z.object({
+	inviteId: z.string().min(1),
+});
+
+export type InviteMemberInput = z.infer<typeof inviteMemberInput>;
+export type RevokeInviteInput = z.infer<typeof revokeInviteInput>;
+
 export type UpdateWorkspaceInput = z.infer<typeof updateWorkspaceInput>;
 export type SetMemberRoleInput = z.infer<typeof setMemberRoleInput>;
 
@@ -38,6 +53,7 @@ export const workspaceOutput = z.object({
 	viewerRole: z.enum(WORKSPACE_ROLES).nullable(),
 	canRename: z.boolean(),
 	canChangeRoles: z.boolean(),
+	canInvite: z.boolean(),
 });
 
 export type Workspace = z.infer<typeof workspaceOutput>;
@@ -54,6 +70,18 @@ export const workspaceMemberOutput = z.object({
 });
 
 export type WorkspaceMember = z.infer<typeof workspaceMemberOutput>;
+
+export const workspaceInviteOutput = z.object({
+	id: z.string(),
+	email: z.string(),
+	createdAt: z.string(),
+});
+
+export type WorkspaceInvite = z.infer<typeof workspaceInviteOutput>;
+
+export const workspaceInviteListOutput = z.array(workspaceInviteOutput);
+
+export const revokeInviteOutput = z.object({ id: z.string() });
 
 export const memberListOutput = z.object({
 	rows: z.array(workspaceMemberOutput),

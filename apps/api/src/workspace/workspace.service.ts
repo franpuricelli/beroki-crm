@@ -1,5 +1,6 @@
 import {
 	canChangeRole,
+	canInviteMembers,
 	canRenameWorkspace,
 	ensureWorkspaceMembership,
 	isWorkspaceRole,
@@ -11,6 +12,7 @@ import type { Db, Prisma } from "@crm/db";
 import { isOnboarded, markOnboarded, workspaceSlug } from "@crm/db/workspace";
 import {
 	BadRequestException,
+	ConflictException,
 	ForbiddenException,
 	Injectable,
 	Logger,
@@ -28,10 +30,13 @@ import {
 	resolveOrderBy,
 } from "../trpc/list-input";
 import type {
+	InviteMemberInput,
 	MemberListInput,
+	RevokeInviteInput,
 	SetMemberRoleInput,
 	UpdateWorkspaceInput,
 	Workspace,
+	WorkspaceInvite,
 	WorkspaceMember,
 } from "./workspace.contracts";
 
@@ -90,6 +95,7 @@ export class WorkspaceService {
 			viewerRole: role,
 			canRename: canRenameWorkspace(role),
 			canChangeRoles: canChangeRole(role),
+			canInvite: canInviteMembers(role),
 		};
 	}
 
@@ -223,6 +229,111 @@ export class WorkspaceService {
 		});
 
 		return this.toMember(updated, userId);
+	}
+
+	async invites(): Promise<WorkspaceInvite[]> {
+		const invites = await this.db.workspaceInvite.findMany({
+			select: { id: true, email: true, createdAt: true },
+			orderBy: { createdAt: "asc" },
+		});
+
+		if (invites.length === 0) return [];
+
+		const joined = await this.db.member.findMany({
+			where: {
+				organizationId: WORKSPACE_ID,
+				user: {
+					email: {
+						in: invites.map((invite) => invite.email),
+						mode: "insensitive",
+					},
+				},
+			},
+			select: { user: { select: { email: true } } },
+		});
+
+		const members = new Set(
+			joined.map((member) => member.user.email.toLowerCase()),
+		);
+
+		return invites
+			.filter((invite) => !members.has(invite.email))
+			.map((invite) => ({
+				id: invite.id,
+				email: invite.email,
+				createdAt: invite.createdAt.toISOString(),
+			}));
+	}
+
+	async invite(
+		userId: string,
+		input: InviteMemberInput,
+	): Promise<WorkspaceInvite> {
+		await this.requireInviter(userId);
+
+		const member = await this.db.member.findFirst({
+			where: {
+				organizationId: WORKSPACE_ID,
+				user: { email: { equals: input.email, mode: "insensitive" } },
+			},
+			select: { id: true },
+		});
+
+		if (member) {
+			throw new ConflictException(`${input.email} is already a member.`);
+		}
+
+		const invite = await this.db.workspaceInvite.upsert({
+			where: { email: input.email },
+			create: { email: input.email, invitedById: userId },
+			update: {},
+			select: { id: true, email: true, createdAt: true },
+		});
+
+		this.logger.log({
+			message: "Workspace member invited",
+			userId,
+			inviteId: invite.id,
+		});
+
+		return {
+			id: invite.id,
+			email: invite.email,
+			createdAt: invite.createdAt.toISOString(),
+		};
+	}
+
+	async revokeInvite(
+		userId: string,
+		input: RevokeInviteInput,
+	): Promise<{ id: string }> {
+		await this.requireInviter(userId);
+
+		const { count } = await this.db.workspaceInvite.deleteMany({
+			where: { id: input.inviteId },
+		});
+
+		if (count === 0) {
+			throw new NotFoundException("That invite does not exist any more.");
+		}
+
+		this.logger.log({
+			message: "Workspace invite revoked",
+			userId,
+			inviteId: input.inviteId,
+		});
+
+		return { id: input.inviteId };
+	}
+
+	private async requireInviter(userId: string) {
+		const role = await workspaceRoleOf(userId);
+
+		if (!canInviteMembers(role)) {
+			throw new ForbiddenException(
+				"Only an owner or an admin can add members.",
+			);
+		}
 	}
 
 	private toMember(row: MemberRow, userId: string): WorkspaceMember {

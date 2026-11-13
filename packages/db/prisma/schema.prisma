@@ -1658,6 +1658,15 @@ model Member {
   @@map("member")
 }
 
+model WorkspaceInvite {
+  id          String   @id @default(cuid())
+  email       String   @unique
+  invitedById String?
+  createdAt   DateTime @default(now())
+
+  @@map("workspaceInvite")
+}
+
 model Invitation {
   id             String       @id
   organizationId String

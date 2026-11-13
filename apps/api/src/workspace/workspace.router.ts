@@ -12,10 +12,15 @@ import type { AuthedTrpcContext } from "../trpc/context.types";
 import { AuthMiddleware } from "../trpc/middlewares/auth.middleware";
 import { restMeta } from "../trpc/openapi";
 import {
+	inviteMemberInput,
 	memberListInput,
 	memberListOutput,
+	revokeInviteInput,
+	revokeInviteOutput,
 	setMemberRoleInput,
 	updateWorkspaceInput,
+	workspaceInviteListOutput,
+	workspaceInviteOutput,
 	workspaceMemberOutput,
 	workspaceOutput,
 } from "./workspace.contracts";
@@ -72,5 +77,37 @@ export class WorkspaceRouter {
 		@Input() input: z.infer<typeof setMemberRoleInput>,
 	) {
 		return this.workspace.setMemberRole(ctx.user.id, input);
+	}
+
+	@Query({
+		output: workspaceInviteListOutput,
+		meta: restMeta("GET", "/workspace/invites", ["Workspace"]),
+	})
+	async invites() {
+		return this.workspace.invites();
+	}
+
+	@Mutation({
+		input: inviteMemberInput,
+		output: workspaceInviteOutput,
+		meta: restMeta("POST", "/workspace/invites", ["Workspace"]),
+	})
+	async invite(
+		@Ctx() ctx: AuthedTrpcContext,
+		@Input() input: z.infer<typeof inviteMemberInput>,
+	) {
+		return this.workspace.invite(ctx.user.id, input);
+	}
+
+	@Mutation({
+		input: revokeInviteInput,
+		output: revokeInviteOutput,
+		meta: restMeta("DELETE", "/workspace/invites/{inviteId}", ["Workspace"]),
+	})
+	async revokeInvite(
+		@Ctx() ctx: AuthedTrpcContext,
+		@Input() input: z.infer<typeof revokeInviteInput>,
+	) {
+		return this.workspace.revokeInvite(ctx.user.id, input);
 	}
 }

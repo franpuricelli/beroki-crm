@@ -51,6 +51,10 @@ addresses exist for a solo self-hoster, where `gmail.com` would be an open door)
 list, read by the sign-in guard *and* the sync's "which side is external" decision** —
 if they drifted a colleague would be refused at the door or filed as a lead. **An empty
 list fails closed.** Parsed on demand. `packages/auth/src/workspace.ts`.
+Settings → Members → **Add member** admits more single addresses without a redeploy:
+those live in the `workspaceInvite` table, not here. When the first entry here is a
+domain, Google sign-in sends it as `hd`, so an invited address on another domain cannot
+pick its account at Google.
 
 ## Where things are
 

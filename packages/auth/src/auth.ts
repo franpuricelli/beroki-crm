@@ -10,7 +10,7 @@ import { organization } from "better-auth/plugins/organization";
 import { API_KEY_EXPIRATION, API_KEY_HEADER, API_KEY_PREFIX } from "./api-keys";
 import { AUTH_COOKIE_PREFIX } from "./cookies";
 import { env } from "./env";
-import { ensureWorkspaceMembership } from "./organization";
+import { ensureWorkspaceMembership, isInvitedEmail } from "./organization";
 import {
 	GOOGLE_PROVIDER_ID,
 	MICROSOFT_PROVIDER_ID,
@@ -259,6 +259,10 @@ export const auth = betterAuth({
 		user: {
 			create: {
 				before: async (user) => {
+					if (await isInvitedEmail(user.email)) {
+						return { data: user };
+					}
+
 					if (!hasSignInAllowList()) {
 						throw new APIError("FORBIDDEN", {
 							message:
