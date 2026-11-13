@@ -2,6 +2,7 @@ import { DealStage } from "@crm/db/enums";
 import type { StatusTone } from "@crm/ui/components/status-indicator";
 
 const ORDER = [
+	DealStage.TO_CONTACT,
 	DealStage.CONTACTED,
 	DealStage.INTERESTED,
 	DealStage.DEMO_BOOKED,
@@ -18,6 +19,7 @@ type DealStagePresentation = Record<
 >;
 
 const PRESENTATION: DealStagePresentation = {
+	TO_CONTACT: { label: "To contact", tone: "neutral" },
 	CONTACTED: { label: "Contacted", tone: "neutral" },
 	INTERESTED: { label: "Interested", tone: "neutral" },
 	DEMO_BOOKED: { label: "Demo booked", tone: "info" },
@@ -28,7 +30,7 @@ const PRESENTATION: DealStagePresentation = {
 	UNQUALIFIED_TO_BUY: { label: "Unqualified", tone: "neutral" },
 };
 
-export const OPEN_STAGES = ORDER.slice(0, 5) as readonly DealStage[];
+export const OPEN_STAGES = ORDER.slice(0, 6) as readonly DealStage[];
 
 export const LOSING_STAGES: readonly DealStage[] = [
 	DealStage.CLOSED_LOST,
@@ -46,6 +48,7 @@ const OPEN_STAGE_COLORS = [
 	"var(--chart-3)",
 	"var(--chart-4)",
 	"var(--chart-5)",
+	"var(--chart-6)",
 ] as const;
 
 export function isClosedStage(stage: DealStage): boolean {

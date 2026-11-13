@@ -153,7 +153,7 @@ function buildServer(apiUrl: string, apiKey: string): McpServer {
 		"crm_set_deal_stage",
 		{
 			description:
-				"Moves a deal to a stage: DEMO_BOOKED, QUALIFIED_TO_BUY, DECISION_MAKER_BOUGHT_IN, CONTRACT_SENT, CLOSED_WON, CLOSED_LOST or UNQUALIFIED_TO_BUY.",
+				"Moves a deal to a stage: TO_CONTACT, CONTACTED, INTERESTED, DEMO_BOOKED, QUALIFIED_TO_BUY, CONTRACT_SENT, CLOSED_WON, CLOSED_LOST or UNQUALIFIED_TO_BUY.",
 			inputSchema: {
 				deal_id: z.string().min(1),
 				stage: z.string().min(1),

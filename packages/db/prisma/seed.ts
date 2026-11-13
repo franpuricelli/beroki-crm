@@ -250,6 +250,7 @@ const TITLES = [
 ] as const;
 
 const OPEN_STAGES = [
+	DealStage.TO_CONTACT,
 	DealStage.CONTACTED,
 	DealStage.INTERESTED,
 	DealStage.DEMO_BOOKED,
