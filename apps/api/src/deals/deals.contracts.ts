@@ -56,6 +56,7 @@ export type DealCreateInput = z.infer<typeof dealCreateInput>;
 const dealUpdateInput = z.object({
 	name: z.string().trim().min(1).optional(),
 	description: z.string().nullable().optional(),
+	findings: z.string().nullable().optional(),
 	companyId: z.string().optional(),
 	ownerId: z.string().optional(),
 	amountCents,
@@ -232,6 +233,7 @@ export const dealDetailOutput = z.object({
 	id: z.string(),
 	name: z.string(),
 	description: z.string().nullable(),
+	findings: z.string().nullable(),
 	stage: stageEnum,
 	currency: z.string(),
 	closedReason: z.string().nullable(),

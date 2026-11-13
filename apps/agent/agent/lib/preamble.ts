@@ -248,6 +248,7 @@ export async function dealPreamble(
 		select: {
 			name: true,
 			description: true,
+			findings: true,
 			stage: true,
 			amount: true,
 			currency: true,
@@ -300,6 +301,9 @@ export async function dealPreamble(
 			: "Nothing has happened on it yet.",
 		...(deal.description
 			? [`The rep's own description of it: "${deal.description}"`]
+			: []),
+		...(deal.findings
+			? ["What has been found about it so far:", "", deal.findings, ""]
 			: []),
 		people ? `People on it: ${people}` : "Nobody is attached to it yet.",
 		fieldBackfillLine(opened),

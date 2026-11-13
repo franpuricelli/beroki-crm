@@ -200,6 +200,7 @@ export class DealsService {
 				id: true,
 				name: true,
 				description: true,
+				findings: true,
 				stage: true,
 				stageChangedAt: true,
 				amount: true,
@@ -316,6 +317,10 @@ export class DealsService {
 		if (input.description !== undefined) {
 			data.description =
 				input.description === null ? null : blankToNull(input.description);
+		}
+		if (input.findings !== undefined) {
+			data.findings =
+				input.findings === null ? null : blankToNull(input.findings);
 		}
 		if (input.companyId !== undefined) {
 			data.company = { connect: { id: input.companyId } };
