@@ -1053,6 +1053,7 @@ model Deal {
   conversations AgentConversation[]
   name          String
   description   String?
+  findings      String?
   companyId     String
   company       Company             @relation(fields: [companyId], references: [id], onDelete: Cascade)
   ownerId       String

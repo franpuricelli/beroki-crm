@@ -46,6 +46,7 @@ Facts an agent needs:
 - Custom fields go in `data.fields`, as a map of field key to value.
 - `q` in a search matches one word. The `fields` filter of a search does not match custom field values.
 - A deal has one main company. A contact on a deal can work at any company.
+- A deal has two text columns. `description` is the short summary at the top of the overview. `findings` is the full text of everything found about the deal.
 
 ## Rules for changes
 

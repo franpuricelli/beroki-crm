@@ -125,7 +125,7 @@ function buildServer(apiUrl: string, apiKey: string): McpServer {
 		"crm_update",
 		{
 			description:
-				"Updates a company, contact or deal. data takes the record's columns and fields, a map of custom field key to value.",
+				"Updates a company, contact or deal. data takes the record's columns and fields, a map of custom field key to value. On a deal, description is the short summary at the top of its overview and findings is the full text of everything found about it.",
 			inputSchema: { entity: record, id: z.string().min(1), data },
 		},
 		({ entity, id, data }) =>

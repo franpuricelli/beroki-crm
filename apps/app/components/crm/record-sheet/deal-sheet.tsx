@@ -274,6 +274,16 @@ function DealOverview({ deal }: { deal: Deal }) {
 
 	return (
 		<DetailSheetBody>
+			<DetailSheetSection title="Summary">
+				<InlineTextArea
+					label="Summary"
+					value={deal.description}
+					placeholder={`What ${deal.company.name} is buying, why now, and what stands in the way.`}
+					saving={isSaving("description")}
+					onSave={(description) => save({ description })}
+				/>
+			</DetailSheetSection>
+
 			<DetailSheetSection title="Stage">
 				<StageStepper dealId={deal.id} stage={deal.stage} />
 
@@ -358,13 +368,13 @@ function DealOverview({ deal }: { deal: Deal }) {
 				</DetailSheetProperties>
 			</DetailSheetSection>
 
-			<DetailSheetSection title="Description">
+			<DetailSheetSection title="Findings">
 				<InlineTextArea
-					label="Description"
-					value={deal.description}
-					placeholder={`What ${deal.company.name} is buying, why now, and what stands in the way.`}
-					saving={isSaving("description")}
-					onSave={(description) => save({ description })}
+					label="Findings"
+					value={deal.findings}
+					placeholder="Everything found about this deal: the sources, the people, the dates, and what is still unknown."
+					saving={isSaving("findings")}
+					onSave={(findings) => save({ findings })}
 				/>
 			</DetailSheetSection>
 
