@@ -136,7 +136,7 @@ function buildServer(apiUrl: string, apiKey: string): McpServer {
 		"crm_link_contact_to_deal",
 		{
 			description:
-				"Puts a contact on a deal with a role. The contact must belong to the deal's company.",
+				"Puts a contact on a deal with a role. The contact can work at any company. The deal keeps its own main company.",
 			inputSchema: {
 				deal_id: z.string().min(1),
 				contact_id: z.string().min(1),

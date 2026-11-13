@@ -1,17 +1,12 @@
 "use client";
 
 import { Button } from "@crm/ui/components/button";
+import { Combobox, type ComboboxOption } from "@crm/ui/components/combobox";
 import { DatePicker } from "@crm/ui/components/date-picker";
 import { Field, FieldLabel } from "@crm/ui/components/field";
 import { Input } from "@crm/ui/components/input";
-import {
-	Select,
-	SelectContent,
-	SelectItem,
-	SelectTrigger,
-	SelectValue,
-} from "@crm/ui/components/select";
 import { Spinner } from "@crm/ui/components/spinner";
+import { useSearchInput } from "@crm/ui/hooks/use-search-input";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useId, useState } from "react";
 import { toast } from "sonner";
@@ -154,50 +149,52 @@ export function QuickAddContact({
 
 export function AttachDealContact({
 	dealId,
-	companyName,
 	onDone,
 }: {
 	dealId: string;
-	companyName: string;
 	onDone: () => void;
 }) {
 	const trpc = useTRPC();
 	const cache = useCrmCache();
 
 	const [contactId, setContactId] = useState("");
+	const [chosen, setChosen] = useState<ComboboxOption | null>(null);
 	const [role, setRole] = useState("");
+	const [query, setQuery] = useState("");
+	const [text, setText] = useSearchInput(query, setQuery);
 
 	const personId = useId();
 	const roleId = useId();
 
-	const options = useQuery(trpc.deals.contactOptions.queryOptions({ dealId }));
-	const candidates = options.data ?? [];
+	const options = useQuery({
+		...trpc.deals.contactOptions.queryOptions({ dealId, q: query }),
+		placeholderData: (previous) => previous,
+	});
+
+	const candidates: ComboboxOption[] = (options.data ?? []).map(
+		(candidate) => ({
+			value: candidate.id,
+			label: candidate.title
+				? `${contactName(candidate)} · ${candidate.title}`
+				: contactName(candidate),
+			hint: candidate.company?.name,
+		}),
+	);
+
+	const stale = options.isFetching || text.trim() !== query.trim();
 
 	const attach = useMutation(
 		trpc.deals.attachContact.mutationOptions({
-			onSuccess: async (attached) => {
-				const person = candidates.find(
-					(candidate) => candidate.id === attached.contactId,
-				);
+			onSuccess: async () => {
 				await cache.deal(dealId);
 				toast.success(
-					person
-						? `${contactName(person)} is on the deal.`
-						: "Added to the deal.",
+					chosen ? `${chosen.label} is on the deal.` : "Added to the deal.",
 				);
 				onDone();
 			},
 			onError: (error) => toast.error(error.message),
 		}),
 	);
-
-	const nobody = !options.isPending && candidates.length === 0;
-
-	const placeholder = options.isPending
-		? "Loading…"
-		: nobody
-			? `Everybody at ${companyName} is already on it`
-			: "Choose somebody";
 
 	return (
 		<QuickAddForm
@@ -211,19 +208,25 @@ export function AttachDealContact({
 		>
 			<Field>
 				<FieldLabel htmlFor={personId}>Person</FieldLabel>
-				<Select value={contactId} onValueChange={setContactId}>
-					<SelectTrigger id={personId} className="w-full" disabled={nobody}>
-						<SelectValue placeholder={placeholder} />
-					</SelectTrigger>
-					<SelectContent>
-						{candidates.map((candidate) => (
-							<SelectItem key={candidate.id} value={candidate.id}>
-								{contactName(candidate)}
-								{candidate.title ? ` · ${candidate.title}` : ""}
-							</SelectItem>
-						))}
-					</SelectContent>
-				</Select>
+				<Combobox
+					id={personId}
+					value={contactId}
+					onValueChange={(next) => {
+						setChosen(
+							candidates.find((candidate) => candidate.value === next) ?? null,
+						);
+						setContactId(next);
+					}}
+					options={candidates}
+					selectedOption={chosen ?? undefined}
+					placeholder="Choose somebody"
+					searchPlaceholder="Search people or companies…"
+					empty={options.isFetching ? "Searching…" : "Nobody matches."}
+					search={text}
+					onSearchChange={setText}
+					stale={stale}
+					className="w-full"
+				/>
 			</Field>
 			<Field>
 				<FieldLabel htmlFor={roleId}>Role</FieldLabel>

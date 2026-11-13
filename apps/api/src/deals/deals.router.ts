@@ -121,8 +121,11 @@ export class DealsRouter {
 		output: dealContactOptionsOutput,
 		meta: restMeta("GET", "/deals/{dealId}/contact-options", ["Deals"]),
 	})
-	async contactOptions(@Input("dealId") dealId: string) {
-		return this.deals.contactOptions(dealId);
+	async contactOptions(
+		@Input("dealId") dealId: string,
+		@Input("q") q: string | undefined,
+	) {
+		return this.deals.contactOptions(dealId, q);
 	}
 
 	@Mutation({
