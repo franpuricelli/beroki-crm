@@ -10,7 +10,11 @@ import { organization } from "better-auth/plugins/organization";
 import { API_KEY_EXPIRATION, API_KEY_HEADER, API_KEY_PREFIX } from "./api-keys";
 import { AUTH_COOKIE_PREFIX } from "./cookies";
 import { env } from "./env";
-import { ensureWorkspaceMembership, isInvitedEmail } from "./organization";
+import {
+	consumeInvite,
+	ensureWorkspaceMembership,
+	isAllowedSignIn,
+} from "./organization";
 import {
 	GOOGLE_PROVIDER_ID,
 	MICROSOFT_PROVIDER_ID,
@@ -23,11 +27,7 @@ import { slackConnectGuard } from "./slack-connect";
 import { rememberSlackInstall, replaceSlackConnection } from "./slack-grant";
 import { SLACK_REQUESTED_SCOPES, SLACK_USER_SCOPES } from "./slack-scopes";
 import { queueSlackInventorySync } from "./slack-sync";
-import {
-	hasSignInAllowList,
-	isWorkspaceEmail,
-	primaryWorkspaceDomain,
-} from "./workspace";
+import { hasSignInAllowList, primaryWorkspaceDomain } from "./workspace";
 
 const socialProviders: NonNullable<BetterAuthOptions["socialProviders"]> = {};
 const slackOAuth = env.slack;
@@ -259,7 +259,7 @@ export const auth = betterAuth({
 		user: {
 			create: {
 				before: async (user) => {
-					if (await isInvitedEmail(user.email)) {
+					if (await isAllowedSignIn(user.email)) {
 						return { data: user };
 					}
 
@@ -270,16 +270,16 @@ export const auth = betterAuth({
 						});
 					}
 
-					if (!isWorkspaceEmail(user.email)) {
-						const domain = primaryWorkspaceDomain();
-						throw new APIError("FORBIDDEN", {
-							message: domain
-								? `This CRM is private. Sign in with your @${domain} account.`
-								: "This CRM is private. That address is not on the allow-list.",
-						});
-					}
+					const domain = primaryWorkspaceDomain();
+					throw new APIError("FORBIDDEN", {
+						message: domain
+							? `This CRM is private. Sign in with your @${domain} account.`
+							: "This CRM is private. That address is not on the allow-list.",
+					});
+				},
 
-					return { data: user };
+				after: async (user) => {
+					await consumeInvite(user.email).catch(() => undefined);
 				},
 			},
 		},

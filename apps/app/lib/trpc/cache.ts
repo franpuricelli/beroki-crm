@@ -40,6 +40,7 @@ export type CrmCache = {
 	slack(options?: Options): Promise<void>;
 	sso(options?: Options): Promise<void>;
 	apiKeys(options?: Options): Promise<void>;
+	invites(options?: Options): Promise<void>;
 	tracking(options?: Options): Promise<void>;
 	everything(): Promise<void>;
 };
@@ -296,11 +297,7 @@ export function useCrmCache(): CrmCache {
 
 		workspace: (options) =>
 			run(
-				[
-					trpc.workspace.get.queryKey(),
-					trpc.workspace.members.queryKey(),
-					trpc.workspace.invites.queryKey(),
-				],
+				[trpc.workspace.get.queryKey(), trpc.workspace.members.queryKey()],
 				[],
 				options,
 			),
@@ -320,6 +317,8 @@ export function useCrmCache(): CrmCache {
 			),
 
 		apiKeys: (options) => run([trpc.apiKeys.list.pathKey()], [], options),
+
+		invites: (options) => run([trpc.workspace.invites.queryKey()], [], options),
 
 		tracking: (options) =>
 			run(

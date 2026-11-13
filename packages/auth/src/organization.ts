@@ -1,5 +1,6 @@
 import { type Db, db } from "@crm/db";
 import { WORKSPACE_ID, workspaceSlug } from "@crm/db/workspace";
+import { isWorkspaceEmail } from "./workspace";
 
 export { WORKSPACE_ID };
 
@@ -47,17 +48,28 @@ export function normalizeInviteEmail(email: string): string {
 
 export async function isInvitedEmail(
 	email: string | null | undefined,
-	client: Db = db,
 ): Promise<boolean> {
 	const value = email ? normalizeInviteEmail(email) : "";
 	if (!value) return false;
 
-	const invite = await client.workspaceInvite.findUnique({
+	const invite = await db.workspaceInvite.findUnique({
 		where: { email: value },
 		select: { id: true },
 	});
 
 	return invite !== null;
+}
+
+export async function isAllowedSignIn(
+	email: string | null | undefined,
+): Promise<boolean> {
+	return isWorkspaceEmail(email) || (await isInvitedEmail(email));
+}
+
+export async function consumeInvite(email: string): Promise<void> {
+	await db.workspaceInvite.deleteMany({
+		where: { email: normalizeInviteEmail(email) },
+	});
 }
 
 export async function ensureWorkspaceMembership(

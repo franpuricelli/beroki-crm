@@ -1,4 +1,4 @@
-import { WORKSPACE_ROLES } from "@crm/auth/organization";
+import { normalizeInviteEmail, WORKSPACE_ROLES } from "@crm/auth/organization";
 import { MAX_SLUG } from "@crm/db/workspace";
 import { z } from "zod";
 import { listInput } from "../trpc/list-input";
@@ -29,8 +29,7 @@ export const setMemberRoleInput = z.object({
 export const inviteMemberInput = z.object({
 	email: z
 		.string()
-		.trim()
-		.toLowerCase()
+		.transform(normalizeInviteEmail)
 		.pipe(z.email("That is not an email address.")),
 });
 

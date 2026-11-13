@@ -50,6 +50,12 @@ const MEMBER_SELECT = {
 
 type MemberRow = Prisma.MemberGetPayload<{ select: typeof MEMBER_SELECT }>;
 
+const INVITE_SELECT = { id: true, email: true, createdAt: true } as const;
+
+type InviteRow = Prisma.WorkspaceInviteGetPayload<{
+	select: typeof INVITE_SELECT;
+}>;
+
 const SORTABLE: OrderByColumns<Prisma.MemberOrderByWithRelationInput> = {
 	name: (dir) => ({ user: { name: dir } }),
 	email: (dir) => ({ user: { email: dir } }),
@@ -233,36 +239,11 @@ export class WorkspaceService {
 
 	async invites(): Promise<WorkspaceInvite[]> {
 		const invites = await this.db.workspaceInvite.findMany({
-			select: { id: true, email: true, createdAt: true },
+			select: INVITE_SELECT,
 			orderBy: { createdAt: "asc" },
 		});
 
-		if (invites.length === 0) return [];
-
-		const joined = await this.db.member.findMany({
-			where: {
-				organizationId: WORKSPACE_ID,
-				user: {
-					email: {
-						in: invites.map((invite) => invite.email),
-						mode: "insensitive",
-					},
-				},
-			},
-			select: { user: { select: { email: true } } },
-		});
-
-		const members = new Set(
-			joined.map((member) => member.user.email.toLowerCase()),
-		);
-
-		return invites
-			.filter((invite) => !members.has(invite.email))
-			.map((invite) => ({
-				id: invite.id,
-				email: invite.email,
-				createdAt: invite.createdAt.toISOString(),
-			}));
+		return invites.map((invite) => this.toInvite(invite));
 	}
 
 	async invite(
@@ -271,15 +252,12 @@ export class WorkspaceService {
 	): Promise<WorkspaceInvite> {
 		await this.requireInviter(userId);
 
-		const member = await this.db.member.findFirst({
-			where: {
-				organizationId: WORKSPACE_ID,
-				user: { email: { equals: input.email, mode: "insensitive" } },
-			},
+		const user = await this.db.user.findFirst({
+			where: { email: { equals: input.email, mode: "insensitive" } },
 			select: { id: true },
 		});
 
-		if (member) {
+		if (user) {
 			throw new ConflictException(`${input.email} is already a member.`);
 		}
 
@@ -287,7 +265,7 @@ export class WorkspaceService {
 			where: { email: input.email },
 			create: { email: input.email, invitedById: userId },
 			update: {},
-			select: { id: true, email: true, createdAt: true },
+			select: INVITE_SELECT,
 		});
 
 		this.logger.log({
@@ -296,11 +274,7 @@ export class WorkspaceService {
 			inviteId: invite.id,
 		});
 
-		return {
-			id: invite.id,
-			email: invite.email,
-			createdAt: invite.createdAt.toISOString(),
-		};
+		return this.toInvite(invite);
 	}
 
 	async revokeInvite(
@@ -334,6 +308,14 @@ export class WorkspaceService {
 				"Only an owner or an admin can add members.",
 			);
 		}
+	}
+
+	private toInvite(row: InviteRow): WorkspaceInvite {
+		return {
+			id: row.id,
+			email: row.email,
+			createdAt: row.createdAt.toISOString(),
+		};
 	}
 
 	private toMember(row: MemberRow, userId: string): WorkspaceMember {

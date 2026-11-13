@@ -1,6 +1,8 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import {
+	consumeInvite,
 	DEFAULT_WORKSPACE_NAME,
+	isAllowedSignIn,
 	isInvitedEmail,
 	WORKSPACE_ID,
 } from "@crm/auth/organization";
@@ -13,9 +15,8 @@ import { WorkspaceService } from "../src/workspace/workspace.service";
 const suffix = crypto.randomUUID();
 const adminId = `invite-admin-${suffix}`;
 const plainId = `invite-plain-${suffix}`;
-const joinedId = `invite-joined-${suffix}`;
 const guest = `guest-${suffix}@example.test`;
-const joinedEmail = `${joinedId}@example.test`;
+const newcomer = `newcomer-${suffix}@example.test`;
 
 const workspace = new WorkspaceService(db, {} as AgentTriggerService);
 
@@ -34,7 +35,6 @@ beforeAll(async () => {
 		data: [
 			{ id: adminId, name: "Invite Admin", email: `${adminId}@example.test` },
 			{ id: plainId, name: "Invite Plain", email: `${plainId}@example.test` },
-			{ id: joinedId, name: "Invite Joined", email: joinedEmail },
 		],
 	});
 	await db.member.createMany({
@@ -59,13 +59,13 @@ beforeAll(async () => {
 
 afterAll(async () => {
 	await db.workspaceInvite.deleteMany({
-		where: { email: { in: [guest, joinedEmail] } },
+		where: { email: { in: [guest, newcomer] } },
 	});
 	await db.member.deleteMany({
-		where: { userId: { in: [adminId, plainId, joinedId] } },
+		where: { userId: { in: [adminId, plainId] } },
 	});
 	await db.user.deleteMany({
-		where: { id: { in: [adminId, plainId, joinedId] } },
+		where: { id: { in: [adminId, plainId] } },
 	});
 });
 
@@ -105,21 +105,28 @@ describe("adding a member by email", () => {
 		).rejects.toThrow("is already a member.");
 	});
 
-	it("stops listing an invite once that person has joined", async () => {
-		await db.workspaceInvite.create({ data: { email: joinedEmail } });
-		await db.member.create({
-			data: {
-				id: `member-${joinedId}`,
-				organizationId: WORKSPACE_ID,
-				userId: joinedId,
-				role: "member",
-				createdAt: new Date(),
-			},
-		});
+	it("admits an invited address at sign-in, beside ALLOWED_SIGN_IN", async () => {
+		const before = process.env.ALLOWED_SIGN_IN;
+		process.env.ALLOWED_SIGN_IN = "acme.test";
 
-		const invites = await workspace.invites();
+		await workspace.invite(adminId, { email: newcomer });
 
-		expect(invites.map((invite) => invite.email)).not.toContain(joinedEmail);
+		expect(await isAllowedSignIn("someone@acme.test")).toBe(true);
+		expect(await isAllowedSignIn(newcomer.toUpperCase())).toBe(true);
+		expect(await isAllowedSignIn(`stranger-${suffix}@example.test`)).toBe(
+			false,
+		);
+
+		process.env.ALLOWED_SIGN_IN = before;
+	});
+
+	it("uses up an invite once its person has an account", async () => {
+		await consumeInvite(` ${newcomer.toUpperCase()} `);
+
+		expect(await isInvitedEmail(newcomer)).toBe(false);
+		expect(
+			(await workspace.invites()).map((invite) => invite.email),
+		).not.toContain(newcomer);
 	});
 
 	it("removes an invite, and the address can no longer sign in", async () => {

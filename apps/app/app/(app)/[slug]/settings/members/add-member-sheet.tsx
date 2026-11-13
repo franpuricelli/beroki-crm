@@ -66,7 +66,7 @@ function AddMemberForm() {
 	const invite = useMutation(
 		trpc.workspace.invite.mutationOptions({
 			onSuccess: async (invited) => {
-				await cache.workspace();
+				await cache.invites();
 				await setOpen(null);
 				setEmail("");
 				toast.success(
@@ -97,7 +97,7 @@ function AddMemberForm() {
 					className="flex-1 overflow-y-auto px-4"
 					onSubmit={(event) => {
 						event.preventDefault();
-						invite.mutate({ email: email.trim() });
+						invite.mutate({ email });
 					}}
 				>
 					<FieldGroup>

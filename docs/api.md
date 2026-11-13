@@ -47,10 +47,10 @@ here, what do we sell.
   `databaseHooks.session.create.before` and **degrades, never throws** — a throw fails
   the session create and locks everyone out. The plugin's `invitation` table is unused.
 - **An invite is one address on the sign-in allow-list, stored in the database.**
-  `workspace.invite` writes a `WorkspaceInvite` row; `databaseHooks.user.create.before`
-  admits an invited address before it checks `ALLOWED_SIGN_IN`. It sends no email:
-  the person signs in and joins as `member`. Only `canInviteMembers` (owner, admin)
-  adds or removes one. `workspace.invites` lists only addresses that have not joined.
+  `workspace.invite` writes a `WorkspaceInvite` row. `databaseHooks.user.create.before`
+  asks `isAllowedSignIn`, which is `ALLOWED_SIGN_IN` or an invite, and
+  `user.create.after` deletes the invite it used. It sends no email: the person signs
+  in and joins as `member`. Only `canInviteMembers` (owner, admin) adds or removes one.
   An invite does not change the mailbox sync, which reads domains only.
 - **First account is owner**, and the hook enrols pre-existing users, oldest first.
 - **Permissions come from `@crm/auth`** — `canRenameWorkspace`, `canChangeRole`,

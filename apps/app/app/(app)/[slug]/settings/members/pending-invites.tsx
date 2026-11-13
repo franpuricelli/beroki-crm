@@ -32,7 +32,7 @@ export function PendingInvites() {
 	const revoke = useMutation(
 		trpc.workspace.revokeInvite.mutationOptions({
 			onSuccess: async () => {
-				await cache.workspace();
+				await cache.invites();
 				toast.success("Invite removed.");
 			},
 			onError: (error) => toast.error(error.message),
