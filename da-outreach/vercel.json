@@ -1,4 +1,0 @@
-{
-  "functions": { "api/**/*.ts": { "maxDuration": 60 } },
-  "rewrites": [{ "source": "/kairon/webhook", "destination": "/api/kairon/webhook" }]
-}
