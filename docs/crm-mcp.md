@@ -1,10 +1,10 @@
-# CRM MCP endpoint
+# CRM MCP endpoint — rules for AI agents
 
 An MCP server for this CRM. An agent connects to it and reads and writes CRM records.
 
 ## Files
 
-- `[token]/route.ts` — the route. It hands the request to `handleCrmMcp`.
+- `apps/app/app/api/crm-mcp/[token]/route.ts` — the route. It hands the request to `handleCrmMcp`.
 - `apps/app/lib/crm-mcp.ts` — the server and all its tools.
 
 ## URL and auth
