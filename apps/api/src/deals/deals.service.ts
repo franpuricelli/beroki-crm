@@ -58,6 +58,7 @@ import type {
 	SetStageInput,
 } from "./deals.contracts";
 import { CLOSING_WINDOWS } from "./deals.contracts";
+import { DEALS } from "./deals-config";
 
 const OWNER_SELECT = {
 	id: true,
@@ -83,6 +84,7 @@ const CONTACT_SELECT = {
 	email: true,
 	title: true,
 	imageUrl: true,
+	company: { select: { id: true, name: true } },
 } as const;
 
 const LOSING = new Set<DealStage>(LOSING_DEAL_STAGES);
@@ -576,7 +578,7 @@ export class DealsService {
 		return { ...updated, changed: true };
 	}
 
-	async contactOptions(dealId: string) {
+	async contactOptions(dealId: string, q = "") {
 		const deal = await this.db.deal.findUnique({
 			where: { id: dealId },
 			select: { companyId: true, contacts: { select: { contactId: true } } },
@@ -586,32 +588,50 @@ export class DealsService {
 			throw new NotFoundException(`No deal with id ${dealId}.`);
 		}
 
-		return this.db.contact.findMany({
+		const candidates: Prisma.ContactWhereInput = {
+			archivedAt: null,
+			id: { notIn: deal.contacts.map((row) => row.contactId) },
+			...this.contactSearch(q),
+		};
+		const orderBy: Prisma.ContactOrderByWithRelationInput[] = [
+			{ firstName: "asc" },
+			{ lastName: "asc" },
+		];
+		const { limit } = DEALS.contactOptions;
+
+		const atCompany = await this.db.contact.findMany({
+			where: { AND: [candidates, { companyId: deal.companyId }] },
+			select: CONTACT_SELECT,
+			orderBy,
+			take: limit,
+		});
+
+		const elsewhere = await this.db.contact.findMany({
 			where: {
-				companyId: deal.companyId,
-				id: { notIn: deal.contacts.map((row) => row.contactId) },
+				AND: [
+					candidates,
+					{
+						OR: [{ companyId: { not: deal.companyId } }, { companyId: null }],
+					},
+				],
 			},
 			select: CONTACT_SELECT,
-			orderBy: [{ firstName: "asc" }, { lastName: "asc" }],
-			take: 100,
+			orderBy,
+			take: limit - atCompany.length,
 		});
+
+		return [...atCompany, ...elsewhere];
 	}
 
 	async attachContact(input: DealAttachContactInput) {
-		const company = await this.companyOf(input.dealId);
+		await this.companyOf(input.dealId);
 		const contact = await this.db.contact.findUnique({
 			where: { id: input.contactId },
-			select: { companyId: true },
+			select: { id: true },
 		});
 
 		if (!contact) {
 			throw new NotFoundException(`No contact with id ${input.contactId}.`);
-		}
-
-		if (contact.companyId !== company.id) {
-			throw new BadRequestException(
-				`That contact does not work at ${company.name}.`,
-			);
 		}
 
 		const role = roleOrNull(input.role ?? null);
@@ -733,6 +753,20 @@ export class DealsService {
 		}
 
 		return deal.company;
+	}
+
+	private contactSearch(q: string): Prisma.ContactWhereInput {
+		const term = q.trim();
+		if (!term) return {};
+
+		return {
+			OR: [
+				{ firstName: { contains: term, mode: "insensitive" } },
+				{ lastName: { contains: term, mode: "insensitive" } },
+				{ email: { contains: term, mode: "insensitive" } },
+				{ company: { name: { contains: term, mode: "insensitive" } } },
+			],
+		};
 	}
 
 	private searchFilter(q: string): Prisma.DealWhereInput {

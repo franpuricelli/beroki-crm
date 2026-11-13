@@ -87,7 +87,10 @@ const dealContactRole = z
 	.max(80, "That role is too long.")
 	.nullable();
 
-export const dealContactsInput = z.object({ dealId: z.string() });
+export const dealContactsInput = z.object({
+	dealId: z.string(),
+	q: z.string().trim().max(200).optional(),
+});
 
 export const dealAttachContactInput = z.object({
 	dealId: z.string(),
@@ -187,6 +190,7 @@ const dealContactSummaryOutput = z.object({
 	email: z.string().nullable(),
 	title: z.string().nullable(),
 	imageUrl: z.string().nullable(),
+	company: z.object({ id: z.string(), name: z.string() }).nullable(),
 });
 
 const dealContactOutput = dealContactSummaryOutput.extend({

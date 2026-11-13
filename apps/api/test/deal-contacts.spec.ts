@@ -93,13 +93,24 @@ beforeAll(async () => {
 afterAll(clean);
 
 describe("bringing a contact onto a deal", () => {
-	it("offers the people at the deal's company and nobody else", async () => {
+	it("offers the people at the deal's company first, then everybody else", async () => {
 		const options = await deals.contactOptions(dealId);
 		const ids = options.map((option) => option.id);
 
 		expect(ids).toContain(championId);
 		expect(ids).toContain(colleagueId);
-		expect(ids).not.toContain(outsiderId);
+		expect(ids).toContain(outsiderId);
+		expect(ids.indexOf(outsiderId)).toBeGreaterThan(ids.indexOf(championId));
+		expect(ids.indexOf(outsiderId)).toBeGreaterThan(ids.indexOf(colleagueId));
+	});
+
+	it("narrows the options to a search across people and companies", async () => {
+		const byName = await deals.contactOptions(dealId, "Outsider");
+		expect(byName.map((option) => option.id)).toEqual([outsiderId]);
+
+		const byCompany = await deals.contactOptions(dealId, `Other Co ${suffix}`);
+		expect(byCompany.map((option) => option.id)).toEqual([outsiderId]);
+		expect(byCompany[0]?.company?.name).toBe(`Other Co ${suffix}`);
 	});
 
 	it("attaches with a role and reads back on the deal", async () => {
@@ -131,10 +142,27 @@ describe("bringing a contact onto a deal", () => {
 		expect(deal.contacts[0]?.role).toBe("Champion");
 	});
 
-	it("refuses somebody who works somewhere else", async () => {
+	it("attaches somebody who works somewhere else, and keeps the deal's main company", async () => {
+		await deals.attachContact({
+			dealId,
+			contactId: outsiderId,
+			role: "Partner",
+		});
+
+		const deal = await deals.byId(dealId);
+		const outsider = deal.contacts.find((contact) => contact.id === outsiderId);
+
+		expect(deal.company.id).toBe(companyId);
+		expect(outsider?.role).toBe("Partner");
+		expect(outsider?.company?.name).toBe(`Other Co ${suffix}`);
+
+		await deals.detachContact({ dealId, contactId: outsiderId });
+	});
+
+	it("refuses a contact that does not exist", async () => {
 		await expect(
-			deals.attachContact({ dealId, contactId: outsiderId }),
-		).rejects.toThrow(`That contact does not work at People Co ${suffix}.`);
+			deals.attachContact({ dealId, contactId: "missing-contact" }),
+		).rejects.toThrow("No contact with id missing-contact.");
 	});
 
 	it("blanks a role rather than storing an empty string", async () => {

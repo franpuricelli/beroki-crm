@@ -45,7 +45,7 @@ Facts an agent needs:
 - `POST` on a record does not take `linkedinUrl` or custom fields. Set them with `crm_update`.
 - Custom fields go in `data.fields`, as a map of field key to value.
 - `q` in a search matches one word. The `fields` filter of a search does not match custom field values.
-- A deal has one company. A contact on a deal must belong to that company.
+- A deal has one main company. A contact on a deal can work at any company.
 
 ## Rules for changes
 

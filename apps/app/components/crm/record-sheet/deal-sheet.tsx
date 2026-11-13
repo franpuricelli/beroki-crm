@@ -107,10 +107,11 @@ function ReportedValue({ deal }: { deal: Deal }) {
 }
 
 const CONTACT_COLUMNS = [
-	{ id: "name", header: "Name", width: "w-[28%]", className: "pl-5" },
-	{ id: "role", header: "Role", width: "w-[20%]" },
-	{ id: "title", header: "Title", width: "w-[22%]" },
-	{ id: "email", header: "Email", width: "w-[22%]" },
+	{ id: "name", header: "Name", width: "w-[24%]", className: "pl-5" },
+	{ id: "company", header: "Company", width: "w-[18%]" },
+	{ id: "role", header: "Role", width: "w-[18%]" },
+	{ id: "title", header: "Title", width: "w-[18%]" },
+	{ id: "email", header: "Email", width: "w-[18%]" },
 	{ id: "remove", srLabel: "Remove", width: "w-10" },
 ];
 
@@ -334,6 +335,7 @@ function DealOverview({ deal }: { deal: Deal }) {
 						onSave={(next) => save({ expectedCloseDate: next || null })}
 					/>
 					<InlineCompanyField
+						label="Main company"
 						value={deal.company.id}
 						company={deal.company}
 						saving={isSaving("companyId")}
@@ -460,11 +462,7 @@ function DealContacts({
 	);
 
 	const form = adding ? (
-		<AttachDealContact
-			dealId={deal.id}
-			companyName={deal.company.name}
-			onDone={onDone}
-		/>
+		<AttachDealContact dealId={deal.id} onDone={onDone} />
 	) : null;
 
 	if (deal.contacts.length === 0) {
@@ -475,7 +473,7 @@ function DealContacts({
 					<DetailSheetEmpty
 						icon={UserMultiple}
 						title="No contacts on this deal"
-						description={`Nobody from ${deal.company.name} is attached yet. Bring the people you are selling to onto the deal and it says who to chase.`}
+						description="Nobody is attached yet. Bring the people you are selling to onto the deal, from any company, and it says who to chase."
 						action={
 							<Button variant="outline" size="sm" onClick={onAdd}>
 								<Icon icon={Add} data-icon="inline-start" />
@@ -508,6 +506,9 @@ function DealContacts({
 								/>
 								<span className="truncate">{contactName(contact)}</span>
 							</span>
+						</TableCell>
+						<TableCell className="truncate px-3 py-2.5 text-muted-foreground">
+							{contact.company?.name ?? <EmptyCellValue />}
 						</TableCell>
 						<TableCell className="truncate px-1 py-2.5">
 							<InlineTextCell

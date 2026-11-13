@@ -220,8 +220,12 @@ Two rules follow for the serverless build:
 `setContactRole` are the only ways to write it. `deals.contactOptions` is what the
 picker reads.
 
-- **A contact on a deal works at that deal's company**, enforced in the service and
-  not merely by the picker — the same rule as `companies.setPrimaryContact`.
+- **A deal has one main company, and its contacts can work anywhere.** `Deal.companyId`
+  is the main company. A contact from another company attaches the same way and keeps
+  its own company. `companies.setPrimaryContact` still requires the company's own staff.
+- **`contactOptions` lists the main company's people first, then everybody else**,
+  takes an optional `q` that matches name, email and company name, and leaves out
+  archived contacts. The limit is `DEALS.contactOptions.limit` in `deals-config.ts`.
 - **Attaching is an upsert and re-attaching keeps the role already there**, so a
   double click cannot blank what somebody typed.
 - **Detaching removes the row, never the contact.** They stay in the CRM, on the
