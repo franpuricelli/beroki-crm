@@ -31,7 +31,6 @@ export default defineConfig({
 			"packages/db/src/generated/**",
 			"packages/ui/src/components/**",
 			"tools/oxlint/anti-slop/**",
-			"da-outreach/**",
 		],
 		rules: {
 			"anti-slop/no-chained-type-assertions": "error",

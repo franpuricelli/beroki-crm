@@ -18,8 +18,7 @@
 			"!.claude",
 			"!.agents",
 			"!tools/oxlint/anti-slop",
-			"!skills-lock.json",
-			"!da-outreach"
+			"!skills-lock.json"
 		]
 	},
 	"formatter": {

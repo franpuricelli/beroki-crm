@@ -1,4 +1,4 @@
-import { handleMcp } from "@/lib/da-outreach/mcp-http";
+import { handleCrmMcp } from "@/lib/crm-mcp";
 import { API_URL } from "@/lib/env";
 
 type Context = { params: Promise<{ token: string }> };
@@ -9,7 +9,7 @@ async function handler(
 ): Promise<Response> {
 	const { token } = await params;
 
-	return handleMcp(request, { apiUrl: API_URL, token });
+	return handleCrmMcp(request, { apiUrl: API_URL, apiKey: token });
 }
 
 export const GET = handler;
