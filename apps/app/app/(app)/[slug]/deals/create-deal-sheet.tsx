@@ -72,7 +72,7 @@ function CreateDealForm({ companyId }: { companyId?: string }) {
 	const [name, setName] = useState("");
 	const [company, setCompany] = useState(companyId ?? UNSET);
 	const [ownerId, setOwnerId] = useState(UNSET);
-	const [stage, setStage] = useState<string>("CONTACTED");
+	const [stage, setStage] = useState<string>("TO_CONTACT");
 	const [amount, setAmount] = useState("");
 	const [currency, setCurrency] = useState("");
 	const [closeDate, setCloseDate] = useState("");

@@ -1,6 +1,7 @@
 import { DealStage } from "./generated/prisma/enums";
 
 export const OPEN_DEAL_STAGES = [
+	DealStage.TO_CONTACT,
 	DealStage.CONTACTED,
 	DealStage.INTERESTED,
 	DealStage.DEMO_BOOKED,

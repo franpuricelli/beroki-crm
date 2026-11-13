@@ -291,6 +291,7 @@ model RateLimit {
 }
 
 enum DealStage {
+  TO_CONTACT
   CONTACTED
   INTERESTED
   DEMO_BOOKED
@@ -1059,7 +1060,7 @@ model Deal {
   ownerId       String
   owner         User                @relation("DealOwner", fields: [ownerId], references: [id])
 
-  stage             DealStage @default(CONTACTED)
+  stage             DealStage @default(TO_CONTACT)
   stageChangedAt    DateTime  @default(now())
   amount            Decimal?  @db.Decimal(14, 2)
   currency          String    @default("USD")

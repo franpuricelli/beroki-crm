@@ -255,7 +255,7 @@ describe("moving a selection of deals to a stage", () => {
 				where: { id: deal.id },
 				select: { stage: true },
 			}),
-		).toEqual({ stage: "CONTACTED" });
+		).toEqual({ stage: "TO_CONTACT" });
 	});
 
 	it("writes the one reason onto every deal's timeline", async () => {
