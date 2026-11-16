@@ -303,7 +303,7 @@ export class McpOAuthClient {
 				"content-type": "application/json",
 			},
 			body: JSON.stringify({
-				client_name: "Comp AI CRM",
+				client_name: "Beroki CRM",
 				redirect_uris: [redirectUri],
 				grant_types: ["authorization_code", "refresh_token"],
 				response_types: ["code"],
