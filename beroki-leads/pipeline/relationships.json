@@ -1,0 +1,11 @@
+[
+  {
+    "council": "Council of the City of Sydney",
+    "applications": ["PAN-532777", "PAN-537236"],
+    "note": "Same Ashmore Estate buildings F/I/G/H: D/2025/405 is detailed design; D/2025/448 amends concept consent D/2015/966. Distinct related applications, not independent dwelling supply. API reports 1065 each; Oct-2025 assessment report describes 1075, so retain current API count pending final notice verification.",
+    "evidence_urls": [
+      "https://meetings.cityofsydney.nsw.gov.au/documents/s99538/Development%20Application%20155%20Mitchell%20Road%20Erskineville%20-%20D2025405.pdf",
+      "https://meetings.cityofsydney.nsw.gov.au/documents/s99514/Development%20Application%20155%20Mitchell%20Road%20Erskineville%20-%20D2025448.pdf"
+    ]
+  }
+]
