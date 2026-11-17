@@ -3,11 +3,14 @@
 Spec for the automation. Read it together with `CONTEXT.md` (sources and rules), `METHOD.md` (research per project) and `LEAD-TEMPLATE.md` (lead file).
 
 ## How to run it
-- The code lives in `franpuricelli/beroki-crm`, folder `beroki-leads/`: `pipeline/` (scripts) and these .md files. `db/` (database) and `leads/` (lead files) are data. They sit in this folder at run time and are not committed (they are in `.gitignore`).
+- **Code:** `franpuricelli/beroki-crm`, folder `beroki-leads/` (`pipeline/` and these .md files). The repo is the only copy of the code. Do not edit a local copy: change the repo and pull.
+- **Data:** `db/` (approvals database, run logs, state) and `leads/` (lead files) live in the data folder on Franco's Mac, `/Users/francopuricelli/beroki-leads`. They are never committed to this repo.
+- **Clone:** the repo is cloned inside the data folder, at `/Users/francopuricelli/beroki-leads/beroki-crm`, so the scheduled tasks can read it. The code folder is `beroki-crm/beroki-leads`.
 - Requirements: Python 3.10+ and `pip install -r pipeline/requirements.txt`.
-- Run: `python -m pipeline.run` from this folder (incremental) or `--since YYYY-MM-DD`; `--sources brisbane goldcoast ...` to run only some sources.
+- Run, from the code folder: `git pull`, then `python -m pipeline.run --db-dir /Users/francopuricelli/beroki-leads/db` (incremental) or add `--since YYYY-MM-DD`; `--sources brisbane goldcoast ...` runs only some sources. Without `--db-dir` the pipeline writes a new empty database inside the clone.
+- The council sources do not answer from Claude's cloud network. The pipeline runs on the Mac: `launchd` runs `scripts/job1.sh` in the data folder every day at 08:00 Buenos Aires. If the Mac is asleep, `launchd` runs it on wake.
 - Victoria (`vicministerial`) needs Chrome open with remote debugging (`--remote-debugging-port=9222`) and Node + Playwright. If that is not available, skip the source with `--sources`.
-- Schedule Job 1 with a Claude scheduled task or with cron/Task Scheduler (every day at 08:00 Buenos Aires). On a local machine, the machine must be on at that time.
+- The Claude scheduled tasks ("Outreach DAs AU+US – Job 1" daily, "– Job 2" Mondays 09:00) read what the pipeline left and follow this spec, `CONTEXT.md`, `METHOD.md` and `LEAD-TEMPLATE.md` from the clone.
 - MCPs Claude needs: Beroki CRM (the URL carries the token: treat it as a password, never write it in a file) and Kairon.
 
 ## Job 1 — Daily 08:00 America/Argentina/Buenos_Aires: new approvals
@@ -40,9 +43,11 @@ For each lead file with `status_lead: nuevo` and ≥10 dwellings (budget: about 
 - M4: "would a 15 minute call this week work…". M5 and E5: friendly close.
 
 ## Senders
-- LinkedIn Franco `chan_01m1er9jhffk4bzj4n90sgnf7g`: 30 invitations/day, shared across all his campaigns in priority order. A campaign with no priority gets 0 quota.
-- LinkedIn Sebastián `chan_01m7b6gznzesp8pgryxf3nxggt`: user decision, split DA contacts between Franco and Sebastián, with **20 invitations/day** for Sebastián. His account **does not allow a note on the invitation**: for his leads the invitation goes without a note and the CTA moves to the first message after acceptance. Emails for his leads go from `sp@renderahouse.org` / `sebastian@renderahouse.org` (30/day each), signed "Sebastián". *(Setup in progress as of 13 Nov; verify in Kairon.)*
-- Current mailboxes: `franco@renderahouse.org` and `fran@renderahouse.org`, 30/day each.
+- LinkedIn Franco `chan_01m1er9jhffk4bzj4n90sgnf7g`: 30 invitations/day, shared across all his campaigns in priority order. He keeps the 19 Brisbane DA campaigns; their limits and sequences were not changed. Campaigns with no priority can be left with no quota behind the prioritised ones.
+- LinkedIn Sebastián `chan_01m7b6gznzesp8pgryxf3nxggt`: **20 invitations/day for the account**, configured and verified on 2026-11-13 UTC. Only sender of the 11 new active campaigns (9 GC + Marrone + The Isles; 27 people, no runs before the change), with a seat limit of 20/day per campaign, priority 0 and window Monday–Friday 09–17 Brisbane. Assignment is by whole campaign, not rotation inside a campaign. These 11 are published v2, **LinkedIn-only**, with no email and no invitation note: acceptance → 2 h → L2 (congratulation, project fact, CTA and Beroki_Portfolio.pdf, Sebastián's voice/signature) → 1 day → L3 → 1 day → M4 → 1 day → M5. No acceptance: visit/like/follow and waits → final wait 14 days with withdrawal; late acceptance → 2 h → L2. The 9 empty DA campaigns stay in draft, unchanged.
+- Reactivation keeps its senders David + Sebastián, priority 3 and an effective limit of 5 per seat; it was not modified. Its invitations from Sebastián share the account maximum of 20 with the 11 DA campaigns (priority 0); its existing runs keep consuming actions. This is not 20 invitations per campaign, and there are no 5 extra invitations reserved for Reactivation.
+- Connected mailboxes: `franco@renderahouse.org`, `fran@renderahouse.org` and `david@renderahouse.org`, 30/day each, unchanged. `sp@renderahouse.org` and `sebastian@renderahouse.org` were **not connected** at the last readback: do not send email from the 11 campaigns and do not reintroduce email steps automatically. Connecting them, and any cost, warm-up and reactivation of the channel, need separate approval; later target 30/day per mailbox and signature "Sebastián
+Beroki (by Render a House)".
 - Each lead keeps the same sender for the whole sequence.
 
 ## Guardrails
