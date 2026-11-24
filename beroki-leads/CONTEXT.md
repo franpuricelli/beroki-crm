@@ -37,6 +37,8 @@ Code: `pipeline/` (Python 3.10+, `requests`, `pypdf`, `fonttools`). Database: `d
 
 In the US these are **issued building permits** (later than a DA). The date is that of the last permit issued.
 
+**Stages.** Each row has `etapa` (`presentado`, `en_evaluacion`, `info_request`, `notificacion_publica`, `aprobado`, `rechazado`, `retirado`, `caducado`; in the US `permiso_en_revision` and `permiso_emitido`; NSW `determinado` because the outcome is unknown), `etapa_desde` and `historial_etapas` (`etapa:date;etapa:date`). A lodged DA and the same DA approved are one row: the key stays `(council, application_number)`. `decision` holds only the final decision and is empty while the DA is open. `--lodged-since` sets the lodgement window, and `--recheck` (plus every open row already in the database) re-queries open DAs each run. Lodged DAs come from Brisbane, Gold Coast and Sunshine Coast (Development.i); `plans_url` links an architectural plan, and a lodged DA without one is not a lead.
+
 **Not covered:** Perth/WA (DAP outcomes are only in PDF minutes: `https://www.planning.wa.gov.au/development-assessment-panels/daps-agendas-and-minutes`), Melbourne councils (Melbourne, Yarra, Port Phillip, Stonnington, Monash: difficult or blocked portals), outcomes for NSW, SA, TAS and NT.
 
 ## Frequency (projects ≥10 units, last 12 months)

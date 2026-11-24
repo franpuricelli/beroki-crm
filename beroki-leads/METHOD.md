@@ -36,6 +36,13 @@ Goal: one lead file per project, maximising **named people at the developer** wi
 - Use the per-project template: Address, Decision/type, Units/source, Project, DA link, Companies, People, Not loaded, CRM/Kairon, Sources and Notes/follow-up. Company: role, confidence, source and website on one line. Person: LinkedIn/email/phone/confidence.
 - Record the exact IDs of **list, campaign and deal**, even if the list holds only one partner. "No list/campaign" is not an invented ID. Preserve **draft**; writing a local lead file does not run enrichment or publish/send campaigns.
 
+## Lodged DAs
+
+- The DA documents come first. Read the DA form, the planning report and the plans: **applicant**, **planner** (the report's author or the consultant on the form), **architect** (from the title block of the plans) and the other consultants. They count towards the minimum of 5 people.
+- Mark whether the applicant **looks like an SPV** (a fresh Pty Ltd, a trustee company, a name that matches the address) and whether the **land looks for sale** (an agent's listing, "development site" marketing, a consent from an owner who is not the applicant).
+- The rest of the method is the same: brand and partners, developer team, ABN Lookup, confirmed vs inferred.
+- Research 20+ units first.
+
 ## 6. Checklist before closing
 
 - [ ] **At least 5 contacts (named people) per project ≥10 dwellings.** Priority: developer/JV partners (directors, founders, development/project managers, sales) → DA planner → architect → builder → other DA consultants. Each with a real role and company; if you cannot reach 5 after exhausting the sources, document what was searched.
