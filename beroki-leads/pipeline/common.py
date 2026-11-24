@@ -4,6 +4,8 @@ import html
 import re
 from dataclasses import dataclass, field
 
+from .config import STAGE, STAGE_DECISION
+
 
 FIELDS = (
     "council state application_number address suburb postcode lat lon description use "
@@ -13,6 +15,8 @@ FIELDS = (
 ).split()
 LEGACY_FIELDS = FIELDS[:]
 FIELDS = FIELDS[:-2] + "country owner owner_contacts applicant_contacts contractor contractor_contacts permit_numbers valuation".split() + FIELDS[-2:]
+PREVIOUS_FIELDS = FIELDS[:]
+FIELDS = FIELDS[:-2] + "etapa etapa_desde historial_etapas plans_url".split() + FIELDS[-2:]
 UNVERIFIED = "Determined (unverified)"
 RESIDENTIAL = re.compile(
     r"apartments?|multiple\s+(?:residential|dwellings?)|multi[ -]?(?:dwelling|unit)|"
@@ -149,6 +153,25 @@ def outcome(value):
     return "Approved" if s in grants else UNVERIFIED
 
 
+def closing_stage(value):
+    s = plain(value).lower()
+    if re.search(r"refus|reject|denied|prohibit", s):
+        return STAGE["refused"]
+    if re.search(r"withdraw|cancel|void|abort|returned", s):
+        return STAGE["withdrawn"]
+    if re.search(r"laps|expir", s):
+        return STAGE["lapsed"]
+    return ""
+
+
+def decided_stage(decision, country):
+    if decision == "Approved":
+        return STAGE["permit_issued"] if country == "US" else STAGE["approved"]
+    if decision == UNVERIFIED:
+        return STAGE["determined"]
+    return closing_stage(decision)
+
+
 def row(**values):
     result = {key: "" for key in FIELDS}
     result.update({k: text(v) for k, v in values.items() if k in result})
@@ -186,6 +209,43 @@ def normalize(values, since, until, *, infer_units=True):
     r["country"] = r["country"] or ("US" if r["state"] in {"FL", "TX"} else "AU")
     if not r["storeys"]:
         r["storeys"] = text(storeys(r["description"]))
+    r["etapa"] = decided_stage(decision, r["country"])
+    return r
+
+
+def unit_value(count):
+    if count in (None, ""):
+        return None
+    try:
+        numeric = float(count)
+    except ValueError as exc:
+        raise ValueError("Invalid unit count: " + text(count)) from exc
+    if numeric < 0 or not numeric.is_integer():
+        raise ValueError("Invalid unit count: " + text(count))
+    return int(numeric)
+
+
+def normalize_stage(values, since=None, until=None, *, filter_units=True):
+    r = row(**values)
+    if not r["council"] or not r["application_number"]:
+        raise ValueError("Record is missing council or application_number")
+    if not r["etapa"]:
+        raise ValueError("Tracked record lacks a stage: " + r["application_number"])
+    lodged = date(r["date_lodged"])
+    if since and (not lodged or not since.isoformat() <= lodged <= until.isoformat()):
+        return None
+    if filter_units and not is_residential(r["use"], r["description"]):
+        return None
+    count = unit_value(r["units"])
+    if filter_units and count is None:
+        count = unit_count(r["description"])
+    if filter_units and count is not None and count < 10:
+        return None
+    decision = STAGE_DECISION.get(r["etapa"], UNVERIFIED if r["etapa"] == STAGE["determined"] else "")
+    r.update(date_lodged=lodged, date_decided=date(r["date_decided"]) if decision else "",
+             decision=decision, units=text(count), units_known="true" if count is not None else "")
+    if not r["storeys"]:
+        r["storeys"] = text(storeys(r["description"]))
     return r
 
 
@@ -196,6 +256,8 @@ class Stats:
     kept: int = 0
     approved: int = 0
     errors: int = 0
+    lodged: int = 0
+    rechecked: int = 0
     since: str = ""
     rejected: set = field(default_factory=set, repr=False)
 
