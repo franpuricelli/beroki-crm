@@ -13,11 +13,19 @@ Spec for the automation. Read it together with `CONTEXT.md` (sources and rules) 
 ## Daily run
 ### 1. Find the eligible projects (code, no model)
 From `beroki-leads/`, with a temporary folder as `<db>`:
-1. `python -m pipeline.run --db-dir <db> --since <today − 14 days> --sources goldcoast brisbane ipswich act casey nsw moretonbay sunshinecoast logan miamidade miami austin`. If a source fails, the others still run.
-2. `python -m pipeline.candidates --db-dir <db>` prints the eligible projects as JSON: decision `Approved` (in the US, an issued permit), units known and ≥10. NSW comes as `Determined (unverified)` and is skipped. The thresholds live in `pipeline/config.py`.
+1. **Open DAs to re-check.** Page through the CRM deals and keep those whose `etapa_da` is an open stage (`presentado`, `en_evaluacion`, `info_request`, `notificacion_publica`, `permiso_en_revision`). Write them to `<db>/recheck.json` as `[{"application_number": "<da_number>", "da_record": "<da_record>"}]`. The pipeline gets the council from the `da_record` host. An empty list is valid.
+2. `python -m pipeline.run --db-dir <db> --since <today − 14 days> --lodged-since <today − 14 days> --recheck <db>/recheck.json --sources goldcoast brisbane ipswich act casey nsw moretonbay sunshinecoast logan miamidade miami austin`. If a source fails, the others still run. The summary JSON lists `new_lodged_by_council`, `recheck_missing` and `recheck_unsupported`.
+3. `python -m pipeline.candidates --db-dir <db> --recheck <db>/recheck.json` prints JSON with three lists:
+   - `eligible`: approved projects. Decision `Approved` (in the US, an issued permit), units known and ≥10. NSW comes as `Determined (unverified)` and is skipped.
+   - `lodged.eligible`: DAs still in assessment, with units known and ≥10 and a public plan (`plans_url`). `priority` is true from 20 units.
+   - `tracked`: the current `etapa` of every DA in `recheck.json`.
+   The thresholds and stage names live in `pipeline/config.py`.
 
-### 2. Keep only the new ones
-For each eligible project, `crm_search` the deals and compare `da_number` exactly. A project with a deal is done. Take the rest, largest first, up to 10 per run; the others come back the next day.
+### 2. Keep only the new ones, update the tracked ones
+- For each project in `eligible` and `lodged.eligible`, `crm_search` the deals and compare `da_number` exactly, as today. **A DA is one deal.** It never gets a second deal, list or campaign when its stage changes.
+- A deal that exists with the same `etapa_da` is done.
+- A deal that exists with another stage (from `tracked`, or an approved project whose deal is still `presentado`) is a stage change: follow "Stage changes" below.
+- Of the new ones, take up to 10 per run in total: approved first, largest first; then lodged, 20+ units first. The others come back the next day.
 
 ### 3. Research, CRM and Kairon (per project)
 1. Research per `METHOD.md`: real developer vs SPV, JV partners and **at least 5 named people**. Never guess emails or phones. Do not buy ASIC extracts.
@@ -26,7 +34,43 @@ For each eligible project, `crm_search` the deals and compare `da_number` exactl
 4. **Campaign:** one per project, no ICP filter (`icpId: null`), priority 0, assigned to Franco or Sebastián by queue. A lead already in another active or paused campaign stays there and is left out of the new one.
 5. **Activate the campaign.** No draft step and no approval step. Before activating, read the campaign back and check the sender, the window and every step. If the check fails, leave it in draft and note the reason on the deal.
 
-There is no summary and no report. A failed run leaves its reason in the session's final message.
+## Lodged DAs (before approval)
+Same deal, list and campaign rules as approved projects, with these differences.
+- **Sources with stage and public plans:** Brisbane, Gold Coast and Sunshine Coast (Development.i). Brisbane units come from the DA Form 1 PDF. Change applications (Form 5, "Minor Change", "Generally in Accordance", numbers like `MCU25/0185.01`) are not new leads; they stay with the original DA.
+- **Not covered yet:** Logan (document listing not verified), Moreton Bay (site blocks scripts, data 4–5 weeks late), NSW (plans for about 10% of DAs, file host blocked), Austin (portal blocks scripts), Miami-Dade and City of Miami (no usable source), Victoria (Cloudflare).
+- **Research:** per `METHOD.md`, "Lodged DAs". The DA documents are the main source. Research 20+ units first.
+- **Enrichment:** work emails only. No weekly cap for now.
+- **CRM:** deal name, owner and fields as for approved projects, with `decision` empty and `etapa_da` set. Stage `TO_CONTACT` until a campaign is active. `findings` says that the DA is in assessment and links the plans.
+- **Kairon:** one list and one campaign per DA. The campaign name contains the DA number. It uses the "in assessment" sequence below. **It stays in draft until Franco approves it.** The daily summary lists the drafts.
+
+### "In assessment" sequence
+Same structure and senders as the approved sequence. Never say "approval" or "congrats". One real fact about the project (units, storeys, type). Offer: renders for public notification or a neighbour consultation, photomontages for the assessment, and imagery for off-the-plan sales.
+- E1, subject `Visuals for <project>`: "Hi {{firstName}}, saw the plans for <project> are in with council: <fact>. If it goes to public notification or a neighbour consultation, clear renders make the scheme easier to read. We also do photomontages for the assessment and the launch imagery for off-the-plan sales. We're doing that for Niecon's Reflections on the Broadwater right now. Worth sending a few examples?" Signature as for approved projects.
+- L1 (≤200 characters, always with a CTA): "Hi {{firstName}}! Saw the plans for <project> are in for assessment. Could I send you a few renders from similar projects?"
+- L2 with `Beroki_Portfolio.pdf`: "Thanks for connecting, {{firstName}}. Here's our portfolio. For <project>, renders help most at notification and later for the off-the-plan launch. Happy to put together a quick example."
+- E2 to E5, L3, M4 and M5: the approved sequence's purpose and timing, without the word "approval".
+- A third party (planner, architect, consultant): ask for an introduction ("Who at <developer> handles the visuals?").
+
+## Stage changes
+For each DA whose stage changed (`tracked`, or a lodged DA that now appears in `eligible`):
+1. `crm_update` the deal: `etapa_da` = the new stage, and `decision` once it is final. Add one note (`crm_create_activity`, NOTE) with the date, the old stage and the new stage.
+2. **Approved** (`aprobado` / `permiso_emitido`):
+   - The contact replied: automate nothing. Tell Franco in the summary.
+   - The contact is in the sequence and has not replied: do not load them again and do not create a campaign. Send **one** congratulation on the approval in the channel the contact is in, and let the sequence continue.
+   - The sequence ended without a reply: send one congratulation. Do not put the contact in a new sequence without Franco's OK.
+   - The DA never reached a campaign (for example, the contacts were not researched yet): follow the normal approved flow on the same deal.
+   Congratulation (short, not a template): "Congrats on the <project> approval, {{firstName}}! That's usually when the launch imagery starts. Happy to help if it's useful."
+3. **Refused, withdrawn or lapsed** (`rechazado`, `retirado`, `caducado`): pause the DA's campaign (`campaign_pause`) or cancel its pending runs, set the deal to `CLOSED_LOST` with the reason, and say it in the summary. The CRM has no "paused" stage.
+4. Before loading a contact, check other campaigns as today. A contact already in this DA's campaign is not loaded again.
+
+## Daily summary
+The run's final message is a short summary in Spanish:
+- new approved and new lodged projects per council, and the top 5 by units;
+- stage changes, presentado → aprobado and → rechazado first, with what was done in the CRM and in Kairon for each;
+- lodged campaigns waiting in draft for Franco's OK;
+- contacts who replied before an approval;
+- errors per source, `recheck_missing` and `recheck_unsupported`.
+If nothing happened and there were no errors, one line.
 
 ## Sequence of each campaign (copy the structure of Wickham `camp_01m795vrdneh78rcxj2rxewvzx`)
 - English, `{{firstName}}`. Steps: E1 → 1 day → LinkedIn invitation (L1) → wait 1 day.
