@@ -91,6 +91,28 @@ it after writing any `AgentTask`.
   health, so a task running under a session nobody recorded is visible.
 - **`AGENT_BRIDGE_SECRET` unset refuses rather than opens.**
 
+### `POST /internal/crm/whatsapp-draft`
+
+Writes the first WhatsApp for one DA contact and answers `{status: "draft", message}`
+or `{status: "review", reason}`. The caller is the hourly GitHub job in
+`beroki-leads/whatsapp`; `beroki-leads/WHATSAPP.md` is its procedure.
+
+- **One model call with no tools, not a session.** A session would carry the root's
+  tools, and several of them write to the CRM. With no tool surface the drafter
+  cannot send, write or fetch anything, whatever the context says.
+- **The request is the whole context**: first name, confirmed role, companies,
+  project, verified facts and approved services
+  (`@crm/validation/whatsapp-draft`). No phone number and no chat ever reaches it.
+- **`draftProblem` is the gate, not the prompt.** A draft with a link, an email, a
+  price, a promise, an attachment, a placeholder, a number not in the context, no
+  greeting by name, no project, or not exactly one question comes back as
+  `review`. The job also re-checks before it sends.
+- **A failed model call is `502`**; the job skips that contact and never falls back
+  to a template.
+- **`DA_WHATSAPP_DRAFT_SECRET` unset answers `503`.** Its own secret, not
+  `AGENT_BRIDGE_SECRET`, so the GitHub job never holds the key that dispatches
+  research.
+
 ### `POST /internal/crm/verify-key`
 
 Probes a candidate Context key → `valid`/`invalid`/`unknown`. No session, no model, no

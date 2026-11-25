@@ -3,6 +3,7 @@ import itertools
 
 from whatsapp.config import WHATSAPP
 from whatsapp.crm import Activity, ActivityPage, Company, Contact, ContactDeal, CrmError, Deal, DealPage, DealRow
+from whatsapp.drafting import Draft, DraftError
 from whatsapp.kairon import Exclusions
 from whatsapp.volt import Chat, Identity, SendResult, VoltError, VoltUncertain
 
@@ -46,12 +47,13 @@ def contact(contact_id, phone="+61 491 570 006", deals=(), company=("co_dev", "F
     return Contact(**values)
 
 
-def deal(deal_id, contact_ids, stage="TO_CONTACT", da="DA-0001", channel="DA Automation", company=("co_dev", "Fictional Developments Pty Ltd", "fictional.example"), **overrides):
-    fields = {"da_number": da}
+def deal(deal_id, contact_ids, stage="TO_CONTACT", da="DA-0001", channel="DA Automation", company=("co_dev", "Fictional Developments Pty Ltd", "fictional.example"), role="Development manager", **overrides):
+    fields = {"da_number": da, "units": 48, "decision": "Approved"}
     if channel is not None:
         fields["channel"] = channel
     values = dict(
         id=deal_id,
+        name=f"Harbor Lane {deal_id} – DA {da}",
         stage=stage,
         archived=False,
         company_id=company[0],
@@ -59,6 +61,7 @@ def deal(deal_id, contact_ids, stage="TO_CONTACT", da="DA-0001", channel="DA Aut
         company_domain=company[2],
         fields=fields,
         contact_ids=tuple(contact_ids),
+        contact_roles={contact_id: role for contact_id in contact_ids},
     )
     values.update(overrides)
     return Deal(**values)
@@ -173,3 +176,26 @@ class FakeKairon:
 
     def exclusions(self):
         return self.value
+
+
+def good_draft(context):
+    return f"Hi {context.first_name}, I'm Franco from Beroki. I came across {context.project} and thought we could help with the renders. Would it be useful if I sent a few examples?"
+
+
+class FakeAgent:
+    def __init__(self, replies=None, events=None):
+        self.replies = list(replies or [])
+        self.contexts = []
+        self.events = events if events is not None else []
+
+    def draft(self, context):
+        self.contexts.append(context)
+        self.events.append(("agent_draft", context.first_name))
+        reply = self.replies.pop(0) if self.replies else "draft"
+        if reply == "error":
+            raise DraftError("fake agent failed")
+        if reply == "review":
+            return Draft("review", None, "Not enough to go on.")
+        if reply == "draft":
+            return Draft("draft", good_draft(context), None)
+        return Draft("draft", reply, None)

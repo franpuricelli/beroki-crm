@@ -1,10 +1,10 @@
-import { timingSafeEqual } from "node:crypto";
 import { EnrichmentStatus, Prisma } from "@crm/db";
 import { MAX_ATTEMPTS } from "@crm/db/agent-tasks";
 import { schemas } from "@crm/validation";
 import { eveTurnFailure } from "@crm/validation/eve-stream";
 import { type ChannelFrom, defineChannel, GET, POST } from "eve/channels";
 import { z } from "zod";
+import { bearerMatches } from "../lib/bearer";
 import { persistBuilderInputRequest } from "../lib/builder-input";
 import { verifyKey } from "../lib/context-dev";
 import {
@@ -30,11 +30,13 @@ import {
 } from "../lib/dispatch";
 import { DISPATCH } from "../lib/dispatch-config";
 import { settle } from "../lib/enrichment";
+import { selectedModel } from "../lib/model";
 import { finishRun, runResultOf } from "../lib/run-runtime";
 import { attribute } from "../lib/session-purpose";
 import { createSlackChannel } from "../lib/slack-membership";
 import { reconcileStaleTasks } from "../lib/stale-tasks";
 import { completeTask, taskSubject } from "../lib/tasks";
+import { whatsappDraftResponse } from "../lib/whatsapp-draft";
 
 const TASK_MARKER = "task:";
 const STALE_QUEUE_MS = DISPATCH.sweep.staleQueueMs;
@@ -77,15 +79,7 @@ function isInputResponseDelivery(
 }
 
 function authorised(request: Request): boolean {
-	const secret = process.env.AGENT_BRIDGE_SECRET?.trim();
-	if (!secret) return false;
-	const header = request.headers.get("authorization");
-	if (!header?.startsWith("Bearer ")) return false;
-	const candidate = Buffer.from(header.slice("Bearer ".length));
-	const expected = Buffer.from(secret);
-	if (candidate.length !== expected.length) return false;
-
-	return timingSafeEqual(candidate, expected);
+	return bearerMatches(request, process.env.AGENT_BRIDGE_SECRET);
 }
 
 export function taskToken(taskId: string): string {
@@ -269,6 +263,14 @@ export default defineChannel({
 
 			return Response.json(await verifyKey(apiKey));
 		}),
+
+		POST("/internal/crm/whatsapp-draft", (request) =>
+			whatsappDraftResponse(
+				request,
+				process.env.DA_WHATSAPP_DRAFT_SECRET,
+				async () => (await selectedModel()).model,
+			),
+		),
 	],
 
 	events: {

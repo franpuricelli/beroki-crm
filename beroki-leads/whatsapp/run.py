@@ -4,15 +4,17 @@ import os
 import sys
 from dataclasses import dataclass, field
 
-from . import hours, ledger, phones, screening
+from . import drafting, hours, ledger, phones, screening
 from .config import REASONS, WHATSAPP
 from .crm import CrmClient, CrmError, all_activities, all_deal_rows
 from .kairon import KaironClient, KaironError
-from .settings import SettingsError, load, render
+from .drafting import AgentClient, DraftError
+from .settings import SettingsError, load
 from .volt import VoltClient, VoltError, VoltUncertain
 
 CRM = WHATSAPP["crm"]
 VOLT = WHATSAPP["volt"]
+DRAFT = WHATSAPP["draft"]
 
 
 class Abort(RuntimeError):
@@ -165,6 +167,33 @@ def dedupe(evaluations, report):
     return [next((item for item in group if item.reason is None), group[0]) for group in groups.values()]
 
 
+class Drafter:
+    def __init__(self, agent, services):
+        self.agent = agent
+        self.services = services
+        self.failures = 0
+
+    def message_for(self, evaluation):
+        context, reason = drafting.context_for(evaluation.contact, evaluation.deal, self.services)
+        if reason:
+            return None, reason
+        try:
+            draft = self.agent.draft(context)
+        except DraftError as exc:
+            self.failures += 1
+            if self.failures >= DRAFT["max_failures_in_a_row"]:
+                evaluation.reason = "draft_failed"
+                raise Abort(f"drafting_unavailable: {exc}") from exc
+            return None, "draft_failed"
+        self.failures = 0
+        if draft.status == "review":
+            return None, "draft_review"
+        da_number = str(evaluation.deal.fields.get(CRM["da_field"]) or "").strip()
+        if drafting.problem(draft.message, context, da_number):
+            return None, "draft_invalid"
+        return draft.message, None
+
+
 class Sender:
     def __init__(self, settings, crm, volt, clock, report):
         self.settings = settings
@@ -188,7 +217,7 @@ class Sender:
             self.alert("reservation_left_open", evaluation, reservation)
         return reason
 
-    def deliver(self, evaluation):
+    def deliver(self, evaluation, message):
         if not hours.in_window(self.clock(), evaluation.zones):
             return "outside_hours"
         reservation = ledger.new_reservation()
@@ -213,8 +242,9 @@ class Sender:
             return self.close(evaluation, reservation, reason)
         if not hours.in_window(self.clock(), evaluation.zones):
             return self.close(evaluation, reservation, "outside_hours")
+        sent_at = self.clock().isoformat()
         try:
-            result = self.volt.send(evaluation.phone.digits, render(self.settings.message, evaluation.contact))
+            result = self.volt.send(evaluation.phone.digits, message)
         except VoltUncertain as exc:
             try:
                 self.write("uncertain", evaluation, reservation, detail=str(exc)[:200])
@@ -225,8 +255,10 @@ class Sender:
         try:
             self.write(
                 "accepted", evaluation, reservation,
+                text=message,
                 volt_message_id=result.message_id,
                 volt_instance=self.settings.volt_instance,
+                sent_at=sent_at,
                 status="accepted by Volt; this is not a delivery receipt",
             )
         except CrmError as exc:
@@ -236,7 +268,7 @@ class Sender:
         return "sent"
 
 
-def run(settings, crm, volt, kairon_client, clock):
+def run(settings, crm, volt, kairon_client, agent, clock):
     report = Report(settings.mode, clock().isoformat(timespec="seconds"), settings.batch)
     if settings.mode != "send":
         crm, volt = ReadOnlyCrm(crm), ReadOnlyVolt(volt)
@@ -249,6 +281,7 @@ def run(settings, crm, volt, kairon_client, clock):
         unique = evaluate(crm, exclusions, clock(), report)
         scheduled = volt.scheduled_recipients()
         sender = Sender(settings, crm, volt, clock, report)
+        drafter = Drafter(agent, settings.services)
         checks = 0
         for evaluation in unique:
             if evaluation.reason is not None:
@@ -263,12 +296,19 @@ def run(settings, crm, volt, kairon_client, clock):
             evaluation.reason = screening.volt_reason(volt, evaluation.phone, scheduled)
             if evaluation.reason is not None:
                 continue
+            if settings.mode == "dry-run" and report.ready >= settings.batch:
+                continue
+            message, evaluation.reason = drafter.message_for(evaluation)
+            if evaluation.reason is not None:
+                continue
             report.ready += 1
             if settings.mode == "send":
-                evaluation.reason = sender.deliver(evaluation)
+                evaluation.reason = sender.deliver(evaluation, message)
+            else:
+                evaluation.reason = "draft_ready"
     except Abort as exc:
         report.aborted = str(exc)
-    except (CrmError, VoltError, KaironError, ReadOnlyError) as exc:
+    except (CrmError, VoltError, KaironError, DraftError, ReadOnlyError) as exc:
         report.aborted = f"{type(exc).__name__}: {exc}"
     for evaluation in unique:
         if evaluation.reason == "reservation_unresolved":
@@ -293,7 +333,7 @@ def summary(report):
         f"- Batch limit: {report.batch}",
         "- Deals: " + (", ".join(f"{key} {value}" for key, value in sorted(report.deals.items())) or "none read"),
         f"- Unique contacts: {report.contacts} (extra links to a second deal: {report.repeated_links})",
-        f"- Passed every check: {report.ready}",
+        f"- Drafted and passed every check: {report.ready}",
         f"- Accepted by Volt: {report.sent}",
     ]
     if report.aborted:
@@ -334,6 +374,7 @@ def main(argv=None):
         CrmClient(settings.crm_url, settings.crm_key),
         VoltClient(settings.volt_key, settings.volt_instance),
         KaironClient(settings.kairon_key),
+        AgentClient(settings.agent_url, settings.draft_secret),
         hours.utc_now,
     )
     text = summary(report)

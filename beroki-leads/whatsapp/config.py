@@ -3,7 +3,16 @@ MINUTE_S = 60 * SECOND_S
 
 WHATSAPP = {
     "batch": {"default": 3, "min": 1, "max": 10},
-    "message": {"max_chars": 1000, "placeholders": ("first_name",)},
+    "draft": {
+        "path": "/internal/crm/whatsapp-draft",
+        "timeout_s": 90 * SECOND_S,
+        "max_chars": 400,
+        "max_failures_in_a_row": 3,
+        "unconfirmed_role": (r"\binferred\b", r"\bunconfirmed\b", r"\bunknown\b", r"\?", r"\bprobabl"),
+        "approved_decision": "Approved",
+        "services": {"max": 8, "max_chars": 120},
+        "limits": {"first_name": 60, "role": 120, "project": 160, "company": 120},
+    },
     "window": {"start_hour": 9, "end_hour": 17, "weekdays": (0, 1, 2, 3, 4)},
     "crm": {
         "page_size": 100,
@@ -105,6 +114,12 @@ REASONS = (
     "volt_chat_alternate_identity",
     "volt_chat_history",
     "volt_not_checked",
+    "draft_role_unconfirmed",
+    "draft_missing_facts",
+    "draft_failed",
+    "draft_review",
+    "draft_invalid",
+    "draft_ready",
     "batch_full",
     "not_reached",
     "eligible",

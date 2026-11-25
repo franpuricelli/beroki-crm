@@ -32,6 +32,8 @@ def parse_entry(activity):
         return None
     values = {}
     for line in lines[1:]:
+        if not line.strip():
+            break
         match = LINE.match(line.strip())
         if match:
             values[match.group(1)] = match.group(2)
@@ -63,7 +65,7 @@ def new_reservation():
     return "r_" + uuid.uuid4().hex
 
 
-def note(state, reservation, contact_id, deal_id, at, **extra):
+def note(state, reservation, contact_id, deal_id, at, text=None, **extra):
     lines = [
         f"{LEDGER['marker']}: {state}",
         f"reservation: {reservation}",
@@ -72,4 +74,6 @@ def note(state, reservation, contact_id, deal_id, at, **extra):
         f"at: {at}",
     ]
     lines.extend(f"{key.replace('_', '-')}: {value}" for key, value in extra.items())
+    if text:
+        lines += ["", text]
     return f"{LEDGER['subject']} · {state}", "\n".join(lines)

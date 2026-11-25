@@ -27,6 +27,7 @@ class DealPage:
 @dataclass(frozen=True)
 class Deal:
     id: str
+    name: str
     stage: str
     archived: bool
     company_id: str
@@ -34,6 +35,7 @@ class Deal:
     company_domain: str | None
     fields: dict
     contact_ids: tuple
+    contact_roles: dict
 
 
 @dataclass(frozen=True)
@@ -116,18 +118,21 @@ def parse_deal_page(raw):
 def parse_deal(raw):
     raw = obj(raw, "deal")
     company = obj(raw.get("company"), "deal.company")
-    contacts = items(raw.get("contacts"), "deal.contacts")
+    contacts = [obj(contact, "deal.contacts[]") for contact in items(raw.get("contacts"), "deal.contacts")]
     return Deal(
         id=text(raw.get("id"), "deal.id"),
+        name=text(raw.get("name"), "deal.name"),
         stage=text(raw.get("stage"), "deal.stage"),
         archived=text_or_none(raw.get("archivedAt"), "deal.archivedAt") is not None,
         company_id=text(company.get("id"), "deal.company.id"),
         company_name=text(company.get("name"), "deal.company.name"),
         company_domain=text_or_none(company.get("domain"), "deal.company.domain"),
         fields=field_values(raw.get("fields"), "deal.fields"),
-        contact_ids=tuple(
-            text(obj(contact, "deal.contacts[]").get("id"), "deal.contacts[].id") for contact in contacts
-        ),
+        contact_ids=tuple(text(contact.get("id"), "deal.contacts[].id") for contact in contacts),
+        contact_roles={
+            text(contact.get("id"), "deal.contacts[].id"): text_or_none(contact.get("role"), "deal.contacts[].role")
+            for contact in contacts
+        },
     )
 
 

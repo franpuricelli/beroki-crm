@@ -180,7 +180,7 @@ class KaironTest(unittest.TestCase):
 class CrmParserTest(unittest.TestCase):
     def test_deal_detail_resolves_select_labels(self):
         raw = {
-            "id": "d1", "stage": "TO_CONTACT", "archivedAt": None,
+            "id": "d1", "name": "Harbor Lane – DA DA-1", "stage": "TO_CONTACT", "archivedAt": None,
             "company": {"id": "co", "name": "Fictional", "domain": None},
             "fields": [
                 {"key": "da_number", "type": "TEXT", "value": "DA-1", "options": []},
@@ -191,6 +191,7 @@ class CrmParserTest(unittest.TestCase):
         parsed = crm.parse_deal(raw)
         self.assertEqual(parsed.fields, {"da_number": "DA-1", "channel": "DA Automation"})
         self.assertEqual(parsed.contact_ids, ("c1",))
+        self.assertEqual(parsed.contact_roles, {"c1": "Director"})
 
     def test_contact_detail_needs_its_deals(self):
         raw = {"id": "c1", "firstName": "Alex", "lastName": None, "email": None, "phone": "+61 491 570 006",

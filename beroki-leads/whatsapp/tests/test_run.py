@@ -1,3 +1,4 @@
+import json
 import unittest
 from unittest import mock
 
@@ -8,14 +9,14 @@ from whatsapp.kairon import Exclusions, parse_companies
 from whatsapp.settings import Settings
 from whatsapp.volt import Identity
 
-from .fakes import IN_AU_WINDOW, INSTANCE, SENDER, Clock, FakeCrm, FakeKairon, FakeVolt, contact, deal, note, utc
+from .fakes import IN_AU_WINDOW, INSTANCE, SENDER, Clock, FakeAgent, FakeCrm, FakeKairon, FakeVolt, contact, deal, note, utc
 
-MESSAGE = "Hi {first_name}, this is a fictional approved text."
+SERVICES = ("Exterior renders", "Interior renders", "Launch imagery")
 NUMBERS = ("+61 491 570 006", "+61 491 570 156", "+61 491 570 157", "+61 491 570 158", "+61 491 570 159")
 
 
 def settings(mode="dry-run", batch=3):
-    return Settings(mode, batch, MESSAGE if mode == "send" else None, "https://crm.invalid", "k", "k", "k", INSTANCE, SENDER, "run-1")
+    return Settings(mode, batch, SERVICES, "https://crm.invalid", "k", "k", "k", "https://agent.invalid", "s", INSTANCE, SENDER, "run-1")
 
 
 def population(count=4):
@@ -24,9 +25,10 @@ def population(count=4):
     return deals, contacts
 
 
-def execute(crm, volt=None, mode="dry-run", batch=3, clock=None, exclusions=None):
+def execute(crm, volt=None, mode="dry-run", batch=3, clock=None, exclusions=None, agent=None):
     volt = volt or FakeVolt()
-    report = run.run(settings(mode, batch), crm, volt, FakeKairon(exclusions), clock or Clock(IN_AU_WINDOW))
+    agent = agent or FakeAgent()
+    report = run.run(settings(mode, batch), crm, volt, FakeKairon(exclusions), agent, clock or Clock(IN_AU_WINDOW))
     return report, volt
 
 
@@ -34,11 +36,13 @@ class DryRunTest(unittest.TestCase):
     def test_reports_totals_without_writing_or_sending(self):
         deals, contacts = population()
         crm = FakeCrm(deals, contacts)
-        report, volt = execute(crm)
+        agent = FakeAgent()
+        report, volt = execute(crm, agent=agent)
         self.assertIsNone(report.aborted)
-        self.assertEqual(report.reasons["eligible"], 4)
-        self.assertEqual((crm.write_count, volt.sent), (0, []))
+        self.assertEqual((report.reasons["draft_ready"], report.reasons["eligible"]), (3, 1))
+        self.assertEqual((crm.write_count, volt.sent, len(agent.contexts)), (0, [], 3))
         text = run.summary(report)
+        self.assertNotIn("Franco from Beroki", text)
         for item in contacts:
             self.assertNotIn(item.last_name, text)
             self.assertNotIn(item.phone.replace(" ", ""), text.replace(" ", ""))
@@ -72,7 +76,7 @@ class DryRunTest(unittest.TestCase):
         shared = contact("c0", NUMBERS[0], deals=[("d0", "TO_CONTACT"), ("d1", "CONTACTED")])
         deals = [deal("d0", ["c0"]), deal("d1", ["c0"], stage="CONTACTED", da="DA-2")]
         report, _ = execute(FakeCrm(deals, [shared]))
-        self.assertEqual((report.contacts, report.repeated_links, report.reasons["eligible"]), (1, 1, 1))
+        self.assertEqual((report.contacts, report.repeated_links, report.reasons["draft_ready"]), (1, 1, 1))
 
     def test_shared_phone_excludes_both_people(self):
         deals, contacts = population(2)
@@ -123,7 +127,7 @@ class DryRunTest(unittest.TestCase):
         deals[1] = deal("d1", ["c1"], company=("co_x", "Excluded Builders", None))
         exclusions = Exclusions((), parse_companies([{"companyName": "Excluded Builders", "matchPastEmployees": False}]))
         report, _ = execute(FakeCrm(deals, contacts), exclusions=exclusions)
-        self.assertEqual((report.reasons["kairon_company"], report.reasons["eligible"]), (1, 1))
+        self.assertEqual((report.reasons["kairon_company"], report.reasons["draft_ready"]), (1, 1))
 
     def test_volt_conversation_or_schedule_blocks(self):
         deals, contacts = population(4)
@@ -162,7 +166,7 @@ class DryRunTest(unittest.TestCase):
         crm = FakeCrm(deals, contacts)
         crm.fail_reads.add("activities:c1")
         report, _ = execute(crm)
-        self.assertEqual((report.reasons["crm_unverifiable"], report.reasons["eligible"]), (1, 1))
+        self.assertEqual((report.reasons["crm_unverifiable"], report.reasons["draft_ready"]), (1, 1))
 
 
 class SendTest(unittest.TestCase):
@@ -171,17 +175,20 @@ class SendTest(unittest.TestCase):
         deals, contacts = population(4)
         crm = FakeCrm(deals, contacts, events=events)
         volt = FakeVolt(events=events)
-        report, _ = execute(crm, volt, mode="send")
+        report, _ = execute(crm, volt, mode="send", agent=FakeAgent(events=events))
         self.assertIsNone(report.aborted)
         self.assertEqual((report.sent, report.reasons["sent"], report.reasons["batch_full"]), (3, 3, 1))
-        self.assertEqual(volt.sent[0], ("61491570006", "Hi Alex, this is a fictional approved text."))
+        expected = "Hi Alex, I'm Franco from Beroki. I came across Harbor Lane d0 and thought we could help with the renders. Would it be useful if I sent a few examples?"
+        self.assertEqual(volt.sent[0], ("61491570006", expected))
         first_send = events.index(("volt_send", "61491570006"))
-        self.assertEqual(events[first_send - 1], ("crm_write", "reserved", "c0"))
+        self.assertEqual(events[first_send - 2:first_send], [("agent_draft", "Alex"), ("crm_write", "reserved", "c0")])
         self.assertEqual(events[first_send + 1], ("crm_write", "accepted", "c0"))
         accepted = [item for item in crm.notes if item.body.startswith("da-whatsapp: accepted")]
         self.assertEqual(len(accepted), 3)
         self.assertIn("volt-message-id: msg_1", accepted[0].body)
+        self.assertIn("sent-at: 2026-11-25T03:17:00+00:00", accepted[0].body)
         self.assertIn("not a delivery receipt", accepted[0].body)
+        self.assertTrue(accepted[0].body.endswith("\n\n" + expected))
         self.assertEqual(run.exit_code(report), 0)
 
     def test_next_run_does_not_send_twice(self):
@@ -276,3 +283,51 @@ class SendTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class DraftingTest(unittest.TestCase):
+    def test_agent_never_sees_a_phone_or_the_da_number(self):
+        deals, contacts = population(1)
+        agent = FakeAgent()
+        execute(FakeCrm(deals, contacts), agent=agent)
+        payload = json.dumps(agent.contexts[0].payload())
+        self.assertNotIn("491", payload)
+        self.assertNotIn("DA-0", payload)
+        self.assertEqual(agent.contexts[0].project, "Harbor Lane d0")
+        self.assertEqual(agent.contexts[0].facts, ("Dwellings: 48", "Planning status: Approved"))
+
+    def test_review_invalid_and_failed_drafts_are_skipped_without_a_reservation(self):
+        deals, contacts = population(4)
+        crm = FakeCrm(deals, contacts)
+        bad = "Hi Alex, I'm Franco from Beroki. See www.example.com for Harbor Lane d1?"
+        agent = FakeAgent(["review", bad, "error", "draft"])
+        report, volt = execute(crm, mode="send", agent=agent)
+        for reason in ("draft_review", "draft_invalid", "draft_failed", "sent"):
+            self.assertEqual(report.reasons[reason], 1, reason)
+        self.assertEqual(len(volt.sent), 1)
+        reserved = [item for item in crm.notes if item.body.startswith("da-whatsapp: reserved")]
+        self.assertEqual(len(reserved), 1)
+
+    def test_the_agent_failing_again_and_again_stops_the_run(self):
+        deals, contacts = population(4)
+        report, volt = execute(FakeCrm(deals, contacts), mode="send", agent=FakeAgent(["error"] * 4))
+        self.assertIn("drafting_unavailable", report.aborted)
+        self.assertEqual(volt.sent, [])
+        self.assertEqual(run.exit_code(report), 1)
+
+    def test_unconfirmed_role_or_missing_facts_are_not_drafted(self):
+        deals, contacts = population(3)
+        deals[0] = deal("d0", ["c0"], role="Director (inferred)")
+        deals[1] = deal("d1", ["c1"], role=None)
+        deals[2] = deal("d2", ["c2"], fields={"da_number": "DA-2", "channel": "DA Automation", "decision": "Determined (unverified)"})
+        agent = FakeAgent()
+        report, _ = execute(FakeCrm(deals, contacts), agent=agent)
+        self.assertEqual((report.reasons["draft_role_unconfirmed"], report.reasons["draft_missing_facts"]), (2, 1))
+        self.assertEqual(agent.contexts, [])
+
+    def test_dry_run_never_reserves_or_sends_even_with_drafts(self):
+        deals, contacts = population(2)
+        crm = FakeCrm(deals, contacts)
+        report, volt = execute(crm, agent=FakeAgent())
+        self.assertEqual(report.reasons["draft_ready"], 2)
+        self.assertEqual((crm.notes, volt.sent), ([], []))
