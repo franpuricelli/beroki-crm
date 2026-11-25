@@ -111,7 +111,7 @@ class Volt:
     def rpc(self, method, params, timeout):
         request_id = next(self.ids)
         try:
-            response = self.session.post(WHATSAPP["volt_url"], json={"jsonrpc": "2.0", "id": request_id, "method": method, "params": params}, timeout=(10, timeout))
+            response = self.session.post(WHATSAPP["volt_url"], json={"jsonrpc": "2.0", "id": request_id, "method": method, "params": params}, timeout=(TIMEOUT["connect"], timeout))
         except requests.RequestException as exc:
             raise Uncertain(f"Volt {method} failed: {type(exc).__name__}") from exc
         if response.status_code >= 400:
@@ -145,7 +145,8 @@ class Volt:
         found = [re.search(pattern, text, re.MULTILINE) for pattern in (r"^Instance:.*\(([^()\s]+)\)\s*$", r"^Status:\s*(\S+)", r"^JID:\s*(\d+)@s\.whatsapp\.net")]
         if not all(found):
             raise ServiceError("Volt identity has an unknown format")
-        return tuple(match.group(1).lower() if i == 1 else match.group(1) for i, match in enumerate(found))
+        instance, status, number = (match.group(1) for match in found)
+        return instance, status.lower(), number
 
     def scheduled(self):
         lines = [line for line in self.tool("list-scheduled-messages", {"status": "all"}).strip().splitlines() if line.strip()]
@@ -158,14 +159,14 @@ class Volt:
         return set(jids)
 
     def chats(self, digits):
-        found = []
-        for page in range(5):
+        found, size = [], WHATSAPP["volt_chats"]["page_size"]
+        for page in range(WHATSAPP["volt_chats"]["max_pages"]):
             try:
-                chats = json.loads(self.tool("list-chats", {"query": digits, "include_archived": True, "include_last_message": False, "limit": 50, "page": page}))["chats"]
+                chats = json.loads(self.tool("list-chats", {"query": digits, "include_archived": True, "include_last_message": False, "limit": size, "page": page}))["chats"]
             except (ValueError, KeyError, TypeError) as exc:
                 raise ServiceError("Volt chats have an unknown format") from exc
             found += [(c["jid"], bool(c["is_group"])) for c in chats]
-            if len(chats) < 50:
+            if len(chats) < size:
                 return found
         raise ServiceError("Volt chats did not end within the page limit")
 

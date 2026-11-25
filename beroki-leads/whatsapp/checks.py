@@ -1,20 +1,21 @@
 import re
 import unicodedata
-import uuid
 from urllib.parse import unquote, urlparse
 from zoneinfo import ZoneInfo
 
 import phonenumbers
 from phonenumbers import PhoneNumberType
+from pipeline.config import LEAD
 
 from .config import WHATSAPP
 
 FIELDS = WHATSAPP["fields"]
 WINDOW = WHATSAPP["window"]
+LIMITS = WHATSAPP["draft_limits"]
+MARKER = WHATSAPP["marker"] + ":"
 TYPE_NAMES = {value: name for name, value in vars(PhoneNumberType).items() if name.isupper()}
 MARKS = re.compile(WHATSAPP["marks"], re.IGNORECASE)
 WHATSAPP_NOTE = re.compile(WHATSAPP["whatsapp_note"], re.IGNORECASE)
-LEDGER_LINE = re.compile(r"^([a-z-]+):\s*(.*?)\s*$")
 
 
 def phone(raw):
@@ -69,40 +70,52 @@ def linkedin_slug(url):
     return unquote(parts[1]).lower() if len(parts) >= 2 and parts[0] == "in" else ""
 
 
-def kairon_reason(exclusions, contact, deal):
-    people, companies = exclusions
+def prepare_exclusions(people, companies):
+    slugs = {(p.get("slug") or linkedin_slug(p.get("linkedinUrl"))).lower() for p in people}
+    names = {fold(p.get("fullName") or f"{p.get('firstName') or ''} {p.get('lastName') or ''}") for p in people}
+    company_names = [{company_key(c.get("companyName")), company_key(c.get("pageName"))} - {""} for c in companies]
+    domains = [domain_key(c.get("domain")) for c in companies]
+    return {
+        "slugs": slugs - {""},
+        "names": names - {""},
+        "slug_names": {re.sub(r"(\s+\S*\d\S*)+$", "", fold(slug)) for slug in slugs} - {""},
+        "companies": set().union(*company_names),
+        "domains": set(domains) - {""},
+        "past": any(c.get("matchPastEmployees") for c in companies),
+        "unmatchable": any(not (n or d) for n, d in zip(company_names, domains, strict=True)),
+    }
+
+
+def kairon_reason(ex, contact, deal):
     slug = linkedin_slug(contact["linkedin"])
     full = fold(f"{contact['first_name']} {contact['last_name'] or ''}")
-    for person in people:
-        their_slug = (person.get("slug") or linkedin_slug(person.get("linkedinUrl"))).lower()
-        name = fold(person.get("fullName") or f"{person.get('firstName') or ''} {person.get('lastName') or ''}")
-        slug_name = re.sub(r"(\s+\S*\d\S*)+$", "", fold(unquote(their_slug)))
-        if (slug and slug == their_slug) or (name and name == full) or (not slug and their_slug and slug_name == full):
-            return "kairon_person"
+    if (slug and slug in ex["slugs"]) or full in ex["names"] or (not slug and full in ex["slug_names"]):
+        return "kairon_person"
     real = contact["fields"].get(FIELDS["real_company"])
-    names = {company_key(n) for n in ((contact["company"] or {}).get("name"), deal["company"]["name"], real if isinstance(real, str) else None) if n} - {""}
-    domains = {domain_key(d) for d in (contact["email"], (contact["company"] or {}).get("domain"), deal["company"]["domain"]) if d} - {""}
-    unmatchable = False
-    for company in companies:
-        excluded = {company_key(company.get(k)) for k in ("companyName", "pageName") if company.get(k)} - {""}
-        domain = domain_key(company.get("domain"))
-        if (domain and domain in domains) or any(n == e or n.startswith(e + " ") for e in excluded for n in names):
-            return "kairon_company"
-        if company.get("matchPastEmployees"):
-            return "kairon_past_employees_unverifiable"
-        unmatchable = unmatchable or not (excluded or domain)
-    return "kairon_company_unverifiable" if unmatchable else None
+    company = contact["company"] or {}
+    words = [company_key(n).split() for n in (company.get("name"), deal["company"]["name"], real if isinstance(real, str) else None)]
+    prefixes = {" ".join(w[:i]) for w in words for i in range(1, len(w) + 1)}
+    domains = {domain_key(d) for d in (contact["email"], company.get("domain"), deal["company"]["domain"])} - {""}
+    if prefixes & ex["companies"] or domains & ex["domains"]:
+        return "kairon_company"
+    if ex["past"]:
+        return "kairon_past_employees_unverifiable"
+    return "kairon_company_unverifiable" if ex["unmatchable"] else None
+
+
+def ledger_entries(notes):
+    for note in notes:
+        if note["body"].startswith(MARKER):
+            head, _, rest = note["body"].partition("\n")
+            lines = rest.split("\n\n")[0].splitlines()
+            reservation = next((line.split(":", 1)[1].strip() for line in lines if line.startswith("reservation:")), note["body"])
+            yield note, head[len(MARKER):].strip(), reservation
 
 
 def ledger(notes):
     states = {}
-    for note in notes:
-        lines = note["body"].strip().splitlines()
-        head = LEDGER_LINE.match(lines[0]) if lines else None
-        if not head or head.group(1) != WHATSAPP["marker"]:
-            continue
-        values = dict(m.groups() for m in map(LEDGER_LINE.match, lines[1:lines.index("") if "" in lines else None]) if m)
-        states.setdefault(values.get("reservation", note["body"]), set()).add(head.group(2))
+    for _, state, reservation in ledger_entries(notes):
+        states.setdefault(reservation, set()).add(state)
     if any("accepted" in found for found in states.values()):
         return "already_sent"
     if any(not found & {"accepted", "not-sent", "released"} for found in states.values()):
@@ -111,54 +124,53 @@ def ledger(notes):
 
 
 def ledger_note(state, reservation, contact_id, deal_id, at, text=None, **extra):
-    lines = [f"{WHATSAPP['marker']}: {state}", f"reservation: {reservation}", f"contact: {contact_id}", f"deal: {deal_id}", f"at: {at}"]
+    lines = [f"{MARKER} {state}", f"reservation: {reservation}", f"contact: {contact_id}", f"deal: {deal_id}", f"at: {at}"]
     lines += [f"{key.replace('_', '-')}: {value}" for key, value in extra.items()]
     return f"DA WhatsApp · {state}", "\n".join(lines + (["", text] if text else []))
-
-
-def new_reservation():
-    return "r_" + uuid.uuid4().hex
 
 
 def truthy(value):
     return value is True or (isinstance(value, str) and value.strip().lower() not in ("", "false", "no", "0"))
 
 
-def screen(contact, deal, contact_notes, deal_notes, companies, shared, exclusions, moment):
-    if deal["id"] not in contact["deal_stages"] or contact["id"] not in deal["roles"]:
-        return "deal_not_linked", None, None
+def contact_reason(contact, deal, parsed, shared):
+    if deal["id"] not in contact["deal_stages"]:
+        return "deal_not_linked"
     if contact["archived"]:
-        return "contact_archived", None, None
+        return "contact_archived"
     if truthy(contact["fields"].get(FIELDS["no_contact"])):
-        return "contact_no_contactar", None, None
-    number, reason = phone(contact["phone"])
+        return "contact_no_contactar"
+    number, reason = parsed
     if reason:
-        return reason, None, None
+        return reason
     if number[0] in shared:
-        return "phone_shared", number, None
-    if any(c["phone"] and digits(c["phone"]) == digits(number[0]) for c in companies):
-        return "phone_is_company_phone", number, None
+        return "phone_shared"
     if any(stage not in WHATSAPP["stages"] for stage in contact["deal_stages"].values()):
-        return "contact_other_deal_advanced", number, None
+        return "contact_other_deal_advanced"
+    return None
+
+
+def screen(contact, deal, number, companies, contact_notes, deal_notes, exclusions, moment):
+    e164, country = number
+    if any(c["phone"] and digits(c["phone"]) == digits(e164) for c in companies):
+        return "phone_is_company_phone", None
     if any(stage in WHATSAPP["company_blocking_stages"] for c in companies for stage in c["stages"]):
-        return "company_active_proposal", number, None
-    own = [n for n in contact_notes + [d for d in deal_notes if d["contact"] in (None, contact["id"])] if not n["body"].startswith(WHATSAPP["marker"] + ":")]
+        return "company_active_proposal", None
+    own = [n for n in contact_notes + [d for d in deal_notes if d["contact"] in (None, contact["id"])] if not n["body"].startswith(MARKER)]
     if any(MARKS.search(n["text"]) for n in own):
-        return "crm_mark", number, None
+        return "crm_mark", None
     if any(WHATSAPP_NOTE.search(n["text"]) for n in own):
-        return "crm_whatsapp_history", number, None
+        return "crm_whatsapp_history", None
     reason = ledger(contact_notes) or kairon_reason(exclusions, contact, deal)
     if reason:
-        return reason, number, None
-    zones = WHATSAPP["zones"][number[1]]
+        return reason, None
+    zones = WHATSAPP["zones"][country]
     verified = contact["fields"].get(FIELDS["zone"])
     if isinstance(verified, str) and verified.strip():
         if verified.strip() not in zones:
-            return "zone_conflict", number, None
+            return "zone_conflict", None
         zones = [verified.strip()]
-    if not in_window(moment, zones):
-        return "outside_hours", number, zones
-    return None, number, zones
+    return (None if in_window(moment, zones) else "outside_hours"), zones
 
 
 def volt_reason(volt, e164, scheduled):
@@ -181,12 +193,17 @@ def draft_payload(contact, deal, services):
     project = re.sub(r"\s*[–—-]\s*DA\b.*$", "", deal["name"], flags=re.IGNORECASE)
     project = re.sub(r",?\s*([A-Z]{2,3})?\s*\d{4,5}(-\d{4})?\s*$", "", project).strip(" ,")
     units = deal["fields"].get(FIELDS["units"])
+    approved = LEAD["approved_decision"]
     facts = [f"Dwellings: {int(units)}"] if isinstance(units, (int, float)) and not isinstance(units, bool) and units > 0 else []
-    facts += [f"Planning status: {WHATSAPP['approved']}"] if deal["fields"].get(FIELDS["decision"]) == WHATSAPP["approved"] else []
+    facts += [f"Planning status: {approved}"] if deal["fields"].get(FIELDS["decision"]) == approved else []
     if not (contact["first_name"].strip() and project and facts) or (da and da.lower() in project.lower()):
         return None, "draft_missing_facts"
     return {
-        "firstName": contact["first_name"].strip()[:60], "role": role[:120], "project": project[:160],
-        "contactCompany": ((contact["company"] or {}).get("name") or "")[:120] or None, "developer": deal["company"]["name"][:120],
-        "facts": facts, "services": list(services),
+        "firstName": contact["first_name"].strip()[:LIMITS["name"]],
+        "role": role[:LIMITS["line"]],
+        "project": project[:LIMITS["project"]],
+        "contactCompany": ((contact["company"] or {}).get("name") or "")[:LIMITS["line"]] or None,
+        "developer": deal["company"]["name"][:LIMITS["line"]],
+        "facts": facts,
+        "services": list(services),
     }, None

@@ -2,6 +2,7 @@ import { EnrichmentStatus, Prisma } from "@crm/db";
 import { MAX_ATTEMPTS } from "@crm/db/agent-tasks";
 import { schemas } from "@crm/validation";
 import { eveTurnFailure } from "@crm/validation/eve-stream";
+import { whatsappDraftRequest } from "@crm/validation/whatsapp-draft";
 import { type ChannelFrom, defineChannel, GET, POST } from "eve/channels";
 import { z } from "zod";
 import { bearerMatches } from "../lib/bearer";
@@ -36,7 +37,7 @@ import { attribute } from "../lib/session-purpose";
 import { createSlackChannel } from "../lib/slack-membership";
 import { reconcileStaleTasks } from "../lib/stale-tasks";
 import { completeTask, taskSubject } from "../lib/tasks";
-import { whatsappDraftResponse } from "../lib/whatsapp-draft";
+import { draftWhatsapp } from "../lib/whatsapp-draft";
 
 const TASK_MARKER = "task:";
 const STALE_QUEUE_MS = DISPATCH.sweep.staleQueueMs;
@@ -264,13 +265,39 @@ export default defineChannel({
 			return Response.json(await verifyKey(apiKey));
 		}),
 
-		POST("/internal/crm/whatsapp-draft", (request) =>
-			whatsappDraftResponse(
-				request,
-				process.env.DA_WHATSAPP_DRAFT_SECRET,
-				async () => (await selectedModel()).model,
-			),
-		),
+		POST("/internal/crm/whatsapp-draft", async (request) => {
+			const secret = process.env.DA_WHATSAPP_DRAFT_SECRET;
+			if (!secret?.trim()) {
+				return Response.json(
+					{ error: "WhatsApp drafting is not configured." },
+					{ status: 503 },
+				);
+			}
+			if (!bearerMatches(request, secret)) {
+				return new Response("Unauthorized", { status: 401 });
+			}
+
+			const parsed = whatsappDraftRequest.safeParse(
+				await request.json().catch(() => null),
+			);
+			if (!parsed.success) {
+				return Response.json(
+					{ error: "The draft request did not match." },
+					{ status: 400 },
+				);
+			}
+
+			try {
+				const { model } = await selectedModel();
+				return Response.json(await draftWhatsapp(parsed.data, model));
+			} catch (error) {
+				const name = error instanceof Error ? error.name : "unknown error";
+				return Response.json(
+					{ error: `The drafting model failed: ${name}` },
+					{ status: 502 },
+				);
+			}
+		}),
 	],
 
 	events: {

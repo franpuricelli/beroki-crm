@@ -5,7 +5,7 @@ export const WHATSAPP_DRAFT_LIMITS = {
 	line: 120,
 	project: 160,
 	list: 8,
-	message: 400,
+	message: 320,
 	reason: 300,
 } as const;
 

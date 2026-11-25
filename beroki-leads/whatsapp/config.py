@@ -1,13 +1,14 @@
 MINUTE_S = 60
 
 WHATSAPP = {
-    "batch": {"default": 15, "max": 15},
+    "batch_max": 15,
+    "draft_limits": {"name": 60, "line": 120, "project": 160, "list": 8},
+    "volt_chats": {"page_size": 50, "max_pages": 5},
     "window": {"start": 9, "end": 17, "weekdays": (0, 1, 2, 3, 4)},
     "stages": ("TO_CONTACT", "CONTACTED"),
     "company_blocking_stages": ("INTERESTED", "DEMO_BOOKED", "QUALIFIED_TO_BUY", "CONTRACT_SENT", "CLOSED_WON"),
     "fields": {"da": "da_number", "channel": "channel", "no_contact": "no_contactar", "zone": "timezone", "units": "units", "decision": "decision", "real_company": "real_company"},
     "channel": "DA Automation",
-    "approved": "Approved",
     "marks": r"\b(on[\s-]?hold|hold|wrong (number|phone|mobile)|n[uú]mero (equivocado|incorrecto)|unsubscrib\w*|opt(ed)?[\s-]?out|baja|do not contact|no contactar)\b",
     "whatsapp_note": r"whats\s?app|\bwa\.me\b",
     "unconfirmed_role": r"inferred|unconfirmed|unknown|probabl|\?",
@@ -21,7 +22,7 @@ WHATSAPP = {
     "max_pages": 50,
     "max_volt_checks": 80,
     "max_draft_failures": 3,
-    "timeout_s": {"crm": 30, "kairon": 30, "volt": 60, "volt_send": 2 * MINUTE_S, "agent": 90},
+    "timeout_s": {"connect": 10, "crm": 30, "kairon": 30, "volt": 60, "volt_send": 2 * MINUTE_S, "agent": 90},
     "volt_url": "https://mcp.voltchat.com/mcp",
     "mcp_protocol": "2025-06-18",
     "kairon_url": "https://app.heykairon.com",

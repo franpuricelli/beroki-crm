@@ -13,7 +13,7 @@ The schedule exists only once the workflow file is on the default branch.
 
 ## One run
 
-1. Volt must answer the configured instance and number. Kairon's people and company exclusions are read.
+1. A scheduled run stops at once when no AU or US zone is in hours. Otherwise Volt must answer the configured instance and number, and Kairon's people and company exclusions are read.
 2. Every DA deal in `TO_CONTACT` or `CONTACTED` (with `da_number`, and channel `DA Automation` when set) and each linked contact is read.
 3. A contact is skipped when: it is archived or `no_contactar`; the phone is missing, ambiguous, invalid, not an AU mobile or US number, shared, or the company's; another deal of the person is further on, or the company has a deal in `INTERESTED` or later; a note says hold, wrong number or unsubscribe, or mentions WhatsApp; this job already sent to it or holds an open reservation; Kairon excludes the person or the company; it is outside hours in any possible zone of the phone's country (or in the contact's `timezone` field); Volt has a chat, a message or a scheduled message for the number.
 4. The agent gets the first name, the confirmed role on the deal, the project name, the dwellings, the approval and `DA_WHATSAPP_SERVICES`. A review, an agent error or a missing fact skips the contact. Three agent errors in a row stop the run.
