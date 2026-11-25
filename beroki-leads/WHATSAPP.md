@@ -87,7 +87,6 @@ To reconcile: open the Volt chat with the number. If the message is there, add a
 ```
 cd beroki-leads
 pip install -r whatsapp/requirements.txt
-python -m unittest discover -s whatsapp/tests -t .
 python -m whatsapp.run --mode dry-run
 ```
 
@@ -99,4 +98,4 @@ A local run cannot send: send mode needs GitHub Actions and the default branch.
 - The shape of Kairon's `GET /api/exclusion/people` and `/companies` answers. The OpenAPI document gives no schema. A shape the parser does not know stops the run.
 - How the team records hold, wrong number and unsubscribe in the CRM. Only `no_contactar` exists as a field. The job reads the note patterns above.
 - That a runner reaches the CRM, Volt, Kairon and the agent with the environment's keys. The first manual dry run proves it.
-- What the configured model writes. The tests use a fictional model, and a dry run does not show drafts. Start with `DA_WHATSAPP_BATCH_SIZE=1` and read the text in the first `accepted` notes in the CRM.
+- What the configured model writes. A dry run does not show drafts. Start with `DA_WHATSAPP_BATCH_SIZE=1` and read the text in the first `accepted` notes in the CRM.
