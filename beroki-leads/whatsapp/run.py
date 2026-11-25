@@ -128,13 +128,19 @@ def deliver(item, message, crm, volt, clock, report):
     except ServiceError as exc:
         raise Stop(f"crm_reservation_failed: {exc}") from exc
     try:
-        entries = list(checks.ledger_entries(crm.notes("contactId", contact_id)))
+        fresh, notes = crm.contact(contact_id), crm.notes("contactId", contact_id)
     except ServiceError as exc:
         alert("reservation_unconfirmed")
         raise Stop(f"crm_reservation_unconfirmed: {exc}") from exc
+    entries = list(checks.ledger_entries(notes))
     if not any(r == reservation for _, _, r in entries) or checks.ledger([n for n, _, r in entries if r != reservation]):
         alert("reservation_conflict")
         return close("reservation_unresolved")
+    parsed = checks.phone(fresh["phone"])
+    changed = None if parsed[0] and parsed[0][0] == item["phone"] else "phone_changed"
+    reason = checks.contact_reason(fresh, item["deal"], parsed, set()) or changed or checks.notes_reason(fresh, notes, [])
+    if reason:
+        return close(reason)
     try:
         reason = checks.volt_reason(volt, item["phone"], volt.scheduled())
     except ServiceError as exc:
@@ -172,8 +178,13 @@ def run(mode, batch, services, crm, volt, kairon, agent, sender, clock):
     try:
         if volt.identity() != (volt.instance, "connected", sender):
             raise Stop("volt_identity_mismatch")
-        exclusions = checks.prepare_exclusions(kairon.entries("people"), kairon.entries("companies"))
+        try:
+            exclusions = checks.prepare_exclusions(kairon.entries("people"), kairon.entries("companies"))
+        except ValueError as exc:
+            raise Stop(f"kairon_exclusions_unverifiable: {exc}") from exc
         items = evaluate(crm, exclusions, services, moment, report)
+        if mode == "send" and any(item["reason"] == "reservation_unresolved" for item in items):
+            raise Stop("open_reservation: reconcile it with the Volt chat before anything else is sent")
         scheduled = volt.scheduled()
         checked = failures = 0
         for item in items:
@@ -259,7 +270,7 @@ def main(argv=None):
     if env.get("GITHUB_STEP_SUMMARY"):
         with open(env["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as handle:
             handle.write(text)
-    return 2 if report["alerts"] else 1 if report["stopped"] else 0
+    return 2 if report["alerts"] else 1 if report["stopped"] or report["reasons"]["draft_failed"] else 0
 
 
 if __name__ == "__main__":

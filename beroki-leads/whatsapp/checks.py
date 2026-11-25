@@ -71,18 +71,25 @@ def linkedin_slug(url):
 
 
 def prepare_exclusions(people, companies):
+    for entry in people + companies:
+        if any(v is not None and not isinstance(v, (str, bool)) for k, v in entry.items() if k in ("slug", "linkedinUrl", "fullName", "firstName", "lastName", "companyName", "pageName", "domain", "matchPastEmployees")):
+            raise ValueError("an entry has a field of an unexpected type")
+    if any(not (p.get("slug") or p.get("linkedinUrl") or p.get("fullName") or (p.get("firstName") and p.get("lastName"))) for p in people):
+        raise ValueError("a person entry has no LinkedIn profile and no full name")
+    if any(c.get("matchPastEmployees") for c in companies):
+        raise ValueError("a company entry also covers past employees, which the CRM cannot show")
     slugs = {(p.get("slug") or linkedin_slug(p.get("linkedinUrl"))).lower() for p in people}
     names = {fold(p.get("fullName") or f"{p.get('firstName') or ''} {p.get('lastName') or ''}") for p in people}
     company_names = [{company_key(c.get("companyName")), company_key(c.get("pageName"))} - {""} for c in companies]
     domains = [domain_key(c.get("domain")) for c in companies]
+    if any(not (n or d) for n, d in zip(company_names, domains, strict=True)):
+        raise ValueError("a company entry has no name and no domain")
     return {
         "slugs": slugs - {""},
         "names": names - {""},
         "slug_names": {re.sub(r"(\s+\S*\d\S*)+$", "", fold(slug)) for slug in slugs} - {""},
         "companies": set().union(*company_names),
         "domains": set(domains) - {""},
-        "past": any(c.get("matchPastEmployees") for c in companies),
-        "unmatchable": any(not (n or d) for n, d in zip(company_names, domains, strict=True)),
     }
 
 
@@ -96,11 +103,7 @@ def kairon_reason(ex, contact, deal):
     words = [company_key(n).split() for n in (company.get("name"), deal["company"]["name"], real if isinstance(real, str) else None)]
     prefixes = {" ".join(w[:i]) for w in words for i in range(1, len(w) + 1)}
     domains = {domain_key(d) for d in (contact["email"], company.get("domain"), deal["company"]["domain"])} - {""}
-    if prefixes & ex["companies"] or domains & ex["domains"]:
-        return "kairon_company"
-    if ex["past"]:
-        return "kairon_past_employees_unverifiable"
-    return "kairon_company_unverifiable" if ex["unmatchable"] else None
+    return "kairon_company" if prefixes & ex["companies"] or domains & ex["domains"] else None
 
 
 def ledger_entries(notes):
@@ -150,18 +153,22 @@ def contact_reason(contact, deal, parsed, shared):
     return None
 
 
+def notes_reason(contact, contact_notes, deal_notes):
+    own = [n for n in contact_notes + [d for d in deal_notes if d["contact"] in (None, contact["id"])] if not n["body"].startswith(MARKER)]
+    if any(MARKS.search(n["text"]) for n in own):
+        return "crm_mark"
+    if any(WHATSAPP_NOTE.search(n["text"]) for n in own):
+        return "crm_whatsapp_history"
+    return None
+
+
 def screen(contact, deal, number, companies, contact_notes, deal_notes, exclusions, moment):
     e164, country = number
     if any(c["phone"] and digits(c["phone"]) == digits(e164) for c in companies):
         return "phone_is_company_phone", None
     if any(stage in WHATSAPP["company_blocking_stages"] for c in companies for stage in c["stages"]):
         return "company_active_proposal", None
-    own = [n for n in contact_notes + [d for d in deal_notes if d["contact"] in (None, contact["id"])] if not n["body"].startswith(MARKER)]
-    if any(MARKS.search(n["text"]) for n in own):
-        return "crm_mark", None
-    if any(WHATSAPP_NOTE.search(n["text"]) for n in own):
-        return "crm_whatsapp_history", None
-    reason = ledger(contact_notes) or kairon_reason(exclusions, contact, deal)
+    reason = notes_reason(contact, contact_notes, deal_notes) or ledger(contact_notes) or kairon_reason(exclusions, contact, deal)
     if reason:
         return reason, None
     zones = WHATSAPP["zones"][country]

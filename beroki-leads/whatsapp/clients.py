@@ -58,7 +58,7 @@ class Crm:
             for row in rows:
                 ids.setdefault(row["id"], row["createdAt"])
             if not rows or page * WHATSAPP["page_size"] >= total:
-                return sorted(ids, key=lambda deal_id: (ids[deal_id], deal_id))
+                return sorted(ids, key=lambda deal_id: (ids[deal_id], deal_id), reverse=True)
         raise ServiceError("CRM deal search did not end within the page limit")
 
     def deal(self, deal_id):
@@ -141,7 +141,7 @@ class Volt:
         return text
 
     def identity(self):
-        text = self.tool("get-own-identity", {"instance_id": self.instance})
+        text = self.tool("get-own-identity", {})
         found = [re.search(pattern, text, re.MULTILINE) for pattern in (r"^Instance:.*\(([^()\s]+)\)\s*$", r"^Status:\s*(\S+)", r"^JID:\s*(\d+)@s\.whatsapp\.net")]
         if not all(found):
             raise ServiceError("Volt identity has an unknown format")
