@@ -10,7 +10,7 @@ It is separate from the daily "Outreach DAs AU+US" task in `AUTOMATION.md`. It d
 
 1. Create the GitHub environment `da-whatsapp` (Settings → Environments). Set its deployment branches to the default branch only.
 2. Add the secrets `CRM_API_KEY`, `VOLT_API_KEY`, `KAIRON_API_KEY` and `DA_WHATSAPP_DRAFT_SECRET`.
-3. Add the variables `CRM_API_URL`, `AGENT_URL`, `DA_WHATSAPP_SERVICES`, `DA_WHATSAPP_VOLT_INSTANCE_ID`, `DA_WHATSAPP_SENDER` and, if not 3, `DA_WHATSAPP_BATCH_SIZE`. `.env.example` says what each one is.
+3. Add the variables `CRM_API_URL`, `AGENT_URL`, `DA_WHATSAPP_SERVICES`, `DA_WHATSAPP_VOLT_INSTANCE_ID`, `DA_WHATSAPP_SENDER` and, if not 15, `DA_WHATSAPP_BATCH_SIZE`. `.env.example` says what each one is.
 4. Set the same `DA_WHATSAPP_DRAFT_SECRET` on the agent's deployment, and deploy the agent with the `/internal/crm/whatsapp-draft` route. Without it the route answers `503` and the job sends nothing.
 5. Leave `DA_WHATSAPP_SEND_ENABLED` unset. Run the workflow by hand from the default branch in `dry-run`. Read the totals, the exclusion reasons, the draft results and the Volt identity result.
 6. Only with Franco's explicit approval, set `DA_WHATSAPP_SEND_ENABLED` to `true`. The next run at minute 17 sends. Set it as a **repository** variable (Settings → Secrets and variables → Actions → Variables), not in the environment: the scheduled job reads it before it enters the environment, and an environment variable is not visible there.

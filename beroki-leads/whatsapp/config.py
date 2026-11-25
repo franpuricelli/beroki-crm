@@ -2,7 +2,7 @@ SECOND_S = 1
 MINUTE_S = 60 * SECOND_S
 
 WHATSAPP = {
-    "batch": {"default": 3, "min": 1, "max": 10},
+    "batch": {"default": 15, "min": 1, "max": 15},
     "draft": {
         "path": "/internal/crm/whatsapp-draft",
         "timeout_s": 90 * SECOND_S,
