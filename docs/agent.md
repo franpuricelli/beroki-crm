@@ -93,25 +93,12 @@ it after writing any `AgentTask`.
 
 ### `POST /internal/crm/whatsapp-draft`
 
-Writes the first WhatsApp for one DA contact and answers `{status: "draft", message}`
-or `{status: "review", reason}`. The caller is the hourly GitHub job in
-`beroki-leads/whatsapp`; `beroki-leads/WHATSAPP.md` is its procedure.
-
-- **One model call with no tools, not a session.** A session would carry the root's
-  tools, and several of them write to the CRM. With no tool surface the drafter
-  cannot send, write or fetch anything, whatever the context says.
-- **The request is the whole context**: first name, confirmed role, companies,
-  project, verified facts and approved services
-  (`@crm/validation/whatsapp-draft`). No phone number and no chat ever reaches it.
-- **`draftProblem` is the gate, not the prompt.** A draft with a link, an email, a
-  price, a promise, an attachment, a placeholder, a number not in the context, no
-  greeting by name, no project, or not exactly one question comes back as
-  `review`. The job also re-checks before it sends.
-- **A failed model call is `502`**; the job skips that contact and never falls back
-  to a template.
-- **`DA_WHATSAPP_DRAFT_SECRET` unset answers `503`.** Its own secret, not
-  `AGENT_BRIDGE_SECRET`, so the GitHub job never holds the key that dispatches
-  research.
+Drafts the first WhatsApp for one DA contact for the job in `beroki-leads/whatsapp`
+(`beroki-leads/WHATSAPP.md`). **One model call with no tools, not a session**: the
+root's tools write to the CRM, and the drafter must not. `draftProblem` turns a draft
+with a link, price, promise, attachment, invented number, no name, no project or not
+one question into `review`. A failed call is `502`. Its own secret,
+`DA_WHATSAPP_DRAFT_SECRET`; unset answers `503`.
 
 ### `POST /internal/crm/verify-key`
 
