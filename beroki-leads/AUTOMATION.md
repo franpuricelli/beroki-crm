@@ -9,6 +9,7 @@ Spec for the automation. Read it together with `CONTEXT.md` (sources and rules) 
 - Requirements: Python 3.10+ and `pip install -r pipeline/requirements.txt`.
 - MCPs Claude needs: Beroki CRM (the URL carries the token: treat it as a password, never write it in a file), Kairon, and a web search tool.
 - Victoria (`vicministerial`) needs a browser with remote debugging. It is not in the daily run yet.
+- A separate GitHub Actions job sends a first WhatsApp, through Volt, to DA contacts every hour. It is off until Franco turns it on. See `WHATSAPP.md`.
 
 ## Daily run
 ### 1. Find the eligible projects (code, no model)

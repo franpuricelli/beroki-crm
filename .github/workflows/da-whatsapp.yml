@@ -1,0 +1,84 @@
+name: DA WhatsApp
+
+on:
+  schedule:
+    - cron: "17 * * * *"
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: dry-run reads and reports. send needs DA_WHATSAPP_SEND_ENABLED=true and the default branch.
+        type: choice
+        options:
+          - dry-run
+          - send
+        default: dry-run
+
+concurrency:
+  group: da-whatsapp
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  run:
+    name: First WhatsApp to DA contacts
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (vars.DA_WHATSAPP_SEND_ENABLED == 'true' &&
+       github.ref == format('refs/heads/{0}', github.event.repository.default_branch))
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    environment: da-whatsapp
+    defaults:
+      run:
+        working-directory: beroki-leads
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install
+        run: python -m pip install --disable-pip-version-check -r whatsapp/requirements.txt
+
+      - name: Test
+        run: python -m unittest discover -s whatsapp/tests -t .
+
+      - name: Choose the mode
+        id: mode
+        env:
+          EVENT: ${{ github.event_name }}
+          REQUESTED: ${{ inputs.mode }}
+          ENABLED: ${{ vars.DA_WHATSAPP_SEND_ENABLED }}
+          REF: ${{ github.ref }}
+          DEFAULT_REF: refs/heads/${{ github.event.repository.default_branch }}
+        run: |
+          set -euo pipefail
+          mode=dry-run
+          if [ "$EVENT" = "schedule" ] || [ "$REQUESTED" = "send" ]; then
+            mode=send
+          fi
+          if [ "$mode" = "send" ] && { [ "$ENABLED" != "true" ] || [ "$REF" != "$DEFAULT_REF" ]; }; then
+            echo "Send needs DA_WHATSAPP_SEND_ENABLED=true and the default branch. Nothing ran." >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+          echo "mode=$mode" >> "$GITHUB_OUTPUT"
+
+      - name: Run
+        env:
+          CRM_API_URL: ${{ vars.CRM_API_URL }}
+          CRM_API_KEY: ${{ secrets.CRM_API_KEY }}
+          VOLT_API_KEY: ${{ secrets.VOLT_API_KEY }}
+          KAIRON_API_KEY: ${{ secrets.KAIRON_API_KEY }}
+          DA_WHATSAPP_VOLT_INSTANCE_ID: ${{ vars.DA_WHATSAPP_VOLT_INSTANCE_ID }}
+          DA_WHATSAPP_SENDER: ${{ vars.DA_WHATSAPP_SENDER }}
+          DA_WHATSAPP_MESSAGE: ${{ vars.DA_WHATSAPP_MESSAGE }}
+          DA_WHATSAPP_BATCH_SIZE: ${{ vars.DA_WHATSAPP_BATCH_SIZE }}
+          DA_WHATSAPP_SEND_ENABLED: ${{ vars.DA_WHATSAPP_SEND_ENABLED }}
+          DA_WHATSAPP_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          MODE: ${{ steps.mode.outputs.mode }}
+        run: python -m whatsapp.run --mode "$MODE"
