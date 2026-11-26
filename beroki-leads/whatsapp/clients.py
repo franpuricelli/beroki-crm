@@ -50,16 +50,19 @@ class Crm:
         except (ValueError, KeyError, TypeError, StopIteration) as exc:
             raise ServiceError(f"CRM {path.split('/')[1]} answer did not match") from exc
 
-    def deal_ids(self):
+    def deal_ids(self, stages=WHATSAPP["stages"], archived=False):
         ids = {}
         for page in range(1, WHATSAPP["max_pages"] + 1):
-            body = {"page": page, "pageSize": WHATSAPP["page_size"], "stage": list(WHATSAPP["stages"]), "archived": False}
+            body = {"page": page, "pageSize": WHATSAPP["page_size"], "stage": list(stages), "archived": archived}
             rows, total = self.call("POST", "/deals/search", lambda r: (r["rows"], int(r["total"])), json=body)
             for row in rows:
                 ids.setdefault(row["id"], row["createdAt"])
             if not rows or page * WHATSAPP["page_size"] >= total:
                 return sorted(ids, key=lambda deal_id: (ids[deal_id], deal_id), reverse=True)
         raise ServiceError("CRM deal search did not end within the page limit")
+
+    def every_deal_id(self):
+        return list(dict.fromkeys(self.deal_ids((), False) + self.deal_ids((), True)))
 
     def deal(self, deal_id):
         return self.call("GET", f"/deals/{deal_id}", lambda r: {

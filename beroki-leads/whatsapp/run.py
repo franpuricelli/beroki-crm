@@ -103,6 +103,19 @@ def evaluate(crm, exclusions, services, moment, report):
     return list(chosen.values())
 
 
+def open_reservations(crm):
+    found = []
+    for deal_id in crm.every_deal_id():
+        deal_notes = crm.notes("dealId", deal_id)
+        for reservation in checks.open_reservations(deal_notes):
+            note = next(n for n, _, r in checks.ledger_entries(deal_notes) if r == reservation)
+            contact_id = checks.ledger_field(note, "contact")
+            contact_notes = crm.notes("contactId", contact_id) if contact_id else []
+            if reservation in checks.open_reservations(deal_notes + contact_notes):
+                found.append((contact_id, deal_id, reservation))
+    return found
+
+
 def deliver(item, message, crm, volt, clock, report):
     contact_id, deal_id = item["contact"]["id"], item["deal"]["id"]
     reservation = "r_" + uuid.uuid4().hex
@@ -129,24 +142,29 @@ def deliver(item, message, crm, volt, clock, report):
         raise Stop(f"crm_reservation_failed: {exc}") from exc
     try:
         fresh, notes = crm.contact(contact_id), crm.notes("contactId", contact_id)
+        deal, deal_notes = crm.deal(deal_id), crm.notes("dealId", deal_id)
     except ServiceError as exc:
         alert("reservation_unconfirmed")
         raise Stop(f"crm_reservation_unconfirmed: {exc}") from exc
-    entries = list(checks.ledger_entries(notes))
+    entries = list(checks.ledger_entries(notes + deal_notes))
     if not any(r == reservation for _, _, r in entries) or checks.ledger([n for n, _, r in entries if r != reservation]):
         alert("reservation_conflict")
         return close("reservation_unresolved")
     parsed = checks.phone(fresh["phone"])
     changed = None if parsed[0] and parsed[0][0] == item["phone"] else "phone_changed"
-    reason = checks.contact_reason(fresh, item["deal"], parsed, set()) or changed or checks.notes_reason(fresh, notes, [])
+    moved = "deal_changed" if deal["archived"] or deal["stage"] not in WHATSAPP["stages"] else None
+    reason = moved or checks.contact_reason(fresh, deal, parsed, set()) or changed or checks.notes_reason(fresh, notes, deal_notes)
     if reason:
         return close(reason)
+    reason, zones = checks.contact_zones(fresh, parsed[0][1])
+    if reason or not checks.in_window(clock(), zones):
+        return close(reason or "outside_hours")
     try:
         reason = checks.volt_reason(volt, item["phone"], volt.scheduled())
     except ServiceError as exc:
         close("volt_unverifiable")
         raise Stop(f"volt_unverifiable: {exc}") from exc
-    if reason or not checks.in_window(clock(), item["zones"]):
+    if reason or not checks.in_window(clock(), zones):
         return close(reason or "outside_hours")
     sent_at = clock().isoformat()
     try:
@@ -182,14 +200,22 @@ def run(mode, batch, services, crm, volt, kairon, agent, sender, clock):
             exclusions = checks.prepare_exclusions(kairon.entries("people"), kairon.entries("companies"))
         except ValueError as exc:
             raise Stop(f"kairon_exclusions_unverifiable: {exc}") from exc
+        try:
+            pending = open_reservations(crm)
+        except ServiceError as exc:
+            if mode == "send":
+                raise Stop(f"reservations_unverifiable: {exc}") from exc
+            report["alerts"].append(("reservations_unverifiable", "", "", ""))
+            pending = []
+        report["alerts"] += [("reservation_open", contact_id, deal_id, reservation) for contact_id, deal_id, reservation in pending]
+        if mode == "send" and pending:
+            raise Stop("open_reservation: reconcile it with the Volt chat before anything else is sent")
         items = evaluate(crm, exclusions, services, moment, report)
         if mode == "send" and any(item["reason"] == "reservation_unresolved" for item in items):
             raise Stop("open_reservation: reconcile it with the Volt chat before anything else is sent")
         scheduled = volt.scheduled()
         checked = failures = 0
-        for item in items:
-            if item["reason"] is not None:
-                continue
+        for item in checks.rotated([item for item in items if item["reason"] is None], moment, WHATSAPP["max_volt_checks"]):
             if report["drafted"] >= batch:
                 item["reason"] = "batch_full"
                 continue

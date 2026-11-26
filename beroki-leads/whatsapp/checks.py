@@ -70,16 +70,23 @@ def linkedin_slug(url):
     return unquote(parts[1]).lower() if len(parts) >= 2 and parts[0] == "in" else ""
 
 
+def person_identity(entry):
+    slug = (entry.get("slug") or "").strip().lower() or linkedin_slug(entry.get("linkedinUrl"))
+    name = fold(entry.get("fullName") or "") or fold(f"{entry.get('firstName') or ''} {entry.get('lastName') or ''}")
+    if not slug and len(name.split()) < 2:
+        raise ValueError("a person entry has no LinkedIn profile and no full name after normalizing")
+    return slug, name
+
+
 def prepare_exclusions(people, companies):
     for entry in people + companies:
         if any(v is not None and not isinstance(v, (str, bool)) for k, v in entry.items() if k in ("slug", "linkedinUrl", "fullName", "firstName", "lastName", "companyName", "pageName", "domain", "matchPastEmployees")):
             raise ValueError("an entry has a field of an unexpected type")
-    if any(not (p.get("slug") or p.get("linkedinUrl") or p.get("fullName") or (p.get("firstName") and p.get("lastName"))) for p in people):
-        raise ValueError("a person entry has no LinkedIn profile and no full name")
     if any(c.get("matchPastEmployees") for c in companies):
         raise ValueError("a company entry also covers past employees, which the CRM cannot show")
-    slugs = {(p.get("slug") or linkedin_slug(p.get("linkedinUrl"))).lower() for p in people}
-    names = {fold(p.get("fullName") or f"{p.get('firstName') or ''} {p.get('lastName') or ''}") for p in people}
+    identities = [person_identity(p) for p in people]
+    slugs = {slug for slug, _ in identities}
+    names = {name for _, name in identities}
     company_names = [{company_key(c.get("companyName")), company_key(c.get("pageName"))} - {""} for c in companies]
     domains = [domain_key(c.get("domain")) for c in companies]
     if any(not (n or d) for n, d in zip(company_names, domains, strict=True)):
@@ -106,22 +113,37 @@ def kairon_reason(ex, contact, deal):
     return "kairon_company" if prefixes & ex["companies"] or domains & ex["domains"] else None
 
 
+def ledger_field(note, key):
+    lines = note["body"].partition("\n")[2].split("\n\n")[0].splitlines()
+    return next((line.split(":", 1)[1].strip() for line in lines if line.startswith(key + ":")), "")
+
+
 def ledger_entries(notes):
     for note in notes:
         if note["body"].startswith(MARKER):
-            head, _, rest = note["body"].partition("\n")
-            lines = rest.split("\n\n")[0].splitlines()
-            reservation = next((line.split(":", 1)[1].strip() for line in lines if line.startswith("reservation:")), note["body"])
-            yield note, head[len(MARKER):].strip(), reservation
+            head = note["body"].partition("\n")[0]
+            yield note, head[len(MARKER):].strip(), ledger_field(note, "reservation") or note["body"]
 
 
-def ledger(notes):
+CLOSED_STATES = {"accepted", "not-sent", "released"}
+
+
+def ledger_states(notes):
     states = {}
     for _, state, reservation in ledger_entries(notes):
         states.setdefault(reservation, set()).add(state)
+    return states
+
+
+def open_reservations(notes):
+    return {reservation for reservation, found in ledger_states(notes).items() if not found & CLOSED_STATES}
+
+
+def ledger(notes):
+    states = ledger_states(notes)
     if any("accepted" in found for found in states.values()):
         return "already_sent"
-    if any(not found & {"accepted", "not-sent", "released"} for found in states.values()):
+    if any(not found & CLOSED_STATES for found in states.values()):
         return "reservation_unresolved"
     return None
 
@@ -171,13 +193,27 @@ def screen(contact, deal, number, companies, contact_notes, deal_notes, exclusio
     reason = notes_reason(contact, contact_notes, deal_notes) or ledger(contact_notes) or kairon_reason(exclusions, contact, deal)
     if reason:
         return reason, None
+    reason, zones = contact_zones(contact, country)
+    if reason:
+        return reason, None
+    return (None if in_window(moment, zones) else "outside_hours"), zones
+
+
+def contact_zones(contact, country):
     zones = WHATSAPP["zones"][country]
     verified = contact["fields"].get(FIELDS["zone"])
     if isinstance(verified, str) and verified.strip():
         if verified.strip() not in zones:
             return "zone_conflict", None
         zones = [verified.strip()]
-    return (None if in_window(moment, zones) else "outside_hours"), zones
+    return None, zones
+
+
+def rotated(items, moment, size):
+    if len(items) <= size:
+        return items
+    start = (int(moment.timestamp() // 3600) * size) % len(items)
+    return items[start:] + items[:start]
 
 
 def volt_reason(volt, e164, scheduled):
