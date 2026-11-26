@@ -65,13 +65,25 @@ def domain_key(value):
     return value.removeprefix("www.")
 
 
+def canonical_slug(value):
+    value = unquote((value or "").strip()).lower()
+    return value if re.fullmatch(WHATSAPP["linkedin_slug"], value) else ""
+
+
 def linkedin_slug(url):
     parts = [p for p in urlparse(url if "://" in (url or "") else "https://" + (url or "")).path.split("/") if p]
-    return unquote(parts[1]).lower() if len(parts) >= 2 and parts[0] == "in" else ""
+    return canonical_slug(parts[1]) if len(parts) >= 2 and parts[0] == "in" else ""
 
 
 def person_identity(entry):
-    slug = (entry.get("slug") or "").strip().lower() or linkedin_slug(entry.get("linkedinUrl"))
+    raw_slug, url = (entry.get("slug") or "").strip(), (entry.get("linkedinUrl") or "").strip()
+    from_slug = canonical_slug(raw_slug) if raw_slug else ""
+    from_url = linkedin_slug(url) if url else ""
+    if (raw_slug and not from_slug) or (url and not from_url):
+        raise ValueError("a person entry has a LinkedIn identity that is not a valid profile")
+    if from_slug and from_url and from_slug != from_url:
+        raise ValueError("a person entry has a slug and a LinkedIn URL that disagree")
+    slug = from_slug or from_url
     name = fold(entry.get("fullName") or "") or fold(f"{entry.get('firstName') or ''} {entry.get('lastName') or ''}")
     if not slug and len(name.split()) < 2:
         raise ValueError("a person entry has no LinkedIn profile and no full name after normalizing")
@@ -133,10 +145,6 @@ def ledger_states(notes):
     for _, state, reservation in ledger_entries(notes):
         states.setdefault(reservation, set()).add(state)
     return states
-
-
-def open_reservations(notes):
-    return {reservation for reservation, found in ledger_states(notes).items() if not found & CLOSED_STATES}
 
 
 def ledger(notes):

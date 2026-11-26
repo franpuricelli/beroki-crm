@@ -1,3 +1,4 @@
+import base64
 import itertools
 import json
 import re
@@ -50,10 +51,10 @@ class Crm:
         except (ValueError, KeyError, TypeError, StopIteration) as exc:
             raise ServiceError(f"CRM {path.split('/')[1]} answer did not match") from exc
 
-    def deal_ids(self, stages=WHATSAPP["stages"], archived=False):
+    def deal_ids(self):
         ids = {}
         for page in range(1, WHATSAPP["max_pages"] + 1):
-            body = {"page": page, "pageSize": WHATSAPP["page_size"], "stage": list(stages), "archived": archived}
+            body = {"page": page, "pageSize": WHATSAPP["page_size"], "stage": list(WHATSAPP["stages"]), "archived": False}
             rows, total = self.call("POST", "/deals/search", lambda r: (r["rows"], int(r["total"])), json=body)
             for row in rows:
                 ids.setdefault(row["id"], row["createdAt"])
@@ -61,8 +62,6 @@ class Crm:
                 return sorted(ids, key=lambda deal_id: (ids[deal_id], deal_id), reverse=True)
         raise ServiceError("CRM deal search did not end within the page limit")
 
-    def every_deal_id(self):
-        return list(dict.fromkeys(self.deal_ids((), False) + self.deal_ids((), True)))
 
     def deal(self, deal_id):
         return self.call("GET", f"/deals/{deal_id}", lambda r: {
@@ -187,6 +186,71 @@ class Volt:
         if not match:
             raise Uncertain("Volt send-message gave no message ID")
         return match.group(1)
+
+
+class Ledger:
+    def __init__(self, repository, token, writable, default_branch):
+        cfg = WHATSAPP["ledger"]
+        self.base = f"{cfg['api']}/repos/{repository}"
+        self.branch, self.path, self.writable, self.default_branch = cfg["branch"], cfg["path"], writable, default_branch
+        self.session = requests.Session()
+        self.session.headers.update({"Authorization": "Bearer " + token, "Accept": "application/vnd.github+json",
+                                     "X-GitHub-Api-Version": "2022-11-28"})
+        self.sha = None
+        self.entries = {}
+
+    def request(self, method, path, **kwargs):
+        try:
+            return self.session.request(method, self.base + path, timeout=TIMEOUT["github"], **kwargs)
+        except requests.RequestException as exc:
+            raise ServiceError(f"GitHub {method} failed: {type(exc).__name__}") from exc
+
+    def read(self):
+        response = self.request("GET", f"/contents/{self.path}", params={"ref": self.branch})
+        if response.status_code == 404:
+            self.sha, self.entries = None, {}
+            return None
+        if response.status_code >= 400:
+            raise ServiceError(f"GitHub ledger read answered {response.status_code}")
+        try:
+            body = response.json()
+            state = json.loads(base64.b64decode(body["content"]))
+            if not isinstance(state.get("open"), dict):
+                raise ValueError("open is not a map")
+        except (ValueError, KeyError, TypeError) as exc:
+            raise ServiceError("GitHub ledger does not match") from exc
+        self.sha, self.entries = body["sha"], dict(state["open"])
+        return dict(self.entries)
+
+    def create(self):
+        if not self.writable:
+            raise ServiceError("a dry run tried to create the ledger")
+        head = self.request("GET", f"/git/ref/heads/{self.default_branch}")
+        if head.status_code >= 400:
+            raise ServiceError(f"GitHub default branch read answered {head.status_code}")
+        made = self.request("POST", "/git/refs", json={"ref": f"refs/heads/{self.branch}", "sha": head.json()["object"]["sha"]})
+        if made.status_code >= 400 and made.status_code != 422:
+            raise ServiceError(f"GitHub ledger branch answered {made.status_code}")
+        self.entries = {}
+        self.write("create the DA WhatsApp ledger")
+
+    def put(self, reservation, entry, message):
+        self.entries[reservation] = entry
+        self.write(message)
+
+    def drop(self, reservation, message):
+        self.entries.pop(reservation, None)
+        self.write(message)
+
+    def write(self, message):
+        if not self.writable:
+            raise ServiceError("a dry run tried to write the ledger")
+        content = base64.b64encode((json.dumps({"open": self.entries}, indent=2, sort_keys=True) + "\n").encode()).decode()
+        body = {"message": message, "content": content, "branch": self.branch, **({"sha": self.sha} if self.sha else {})}
+        response = self.request("PUT", f"/contents/{self.path}", json=body)
+        if response.status_code >= 400:
+            raise ServiceError(f"GitHub ledger write answered {response.status_code}")
+        self.sha = response.json()["content"]["sha"]
 
 
 class Kairon:

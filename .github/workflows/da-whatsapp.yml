@@ -25,6 +25,8 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     environment: da-whatsapp
+    permissions:
+      contents: write
     defaults:
       run:
         working-directory: beroki-leads
@@ -54,3 +56,4 @@ jobs:
           DA_WHATSAPP_BATCH_SIZE: ${{ vars.DA_WHATSAPP_BATCH_SIZE }}
           DA_WHATSAPP_SEND_ENABLED: ${{ vars.DA_WHATSAPP_SEND_ENABLED }}
           DA_WHATSAPP_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

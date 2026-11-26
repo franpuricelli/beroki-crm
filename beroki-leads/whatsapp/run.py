@@ -7,7 +7,7 @@ import sys
 import uuid
 
 from . import checks
-from .clients import Agent, Crm, Kairon, ServiceError, Uncertain, Volt
+from .clients import Agent, Crm, Kairon, Ledger, ServiceError, Uncertain, Volt
 from .config import WHATSAPP
 
 FIELDS = WHATSAPP["fields"]
@@ -32,6 +32,8 @@ def settings(env, mode):
     if not 1 <= len(services) <= LIMITS["list"] or any(len(s) > LIMITS["line"] for s in services):
         raise Stop(f"DA_WHATSAPP_SERVICES needs 1 to {LIMITS['list']} services of up to {LIMITS['line']} characters, separated by ; or new lines")
     if mode == "send":
+        if not (env.get("GITHUB_TOKEN") or "").strip() or not (env.get("GITHUB_REPOSITORY") or "").strip():
+            raise Stop("send mode needs GITHUB_TOKEN and GITHUB_REPOSITORY for the reservation ledger")
         branch = (env.get("DA_WHATSAPP_DEFAULT_BRANCH") or "").strip()
         if env.get("DA_WHATSAPP_SEND_ENABLED") != "true" or env.get("GITHUB_ACTIONS") != "true" or not branch or env.get("GITHUB_REF") != "refs/heads/" + branch:
             raise Stop("send mode needs DA_WHATSAPP_SEND_ENABLED=true, GitHub Actions and the default branch")
@@ -103,20 +105,7 @@ def evaluate(crm, exclusions, services, moment, report):
     return list(chosen.values())
 
 
-def open_reservations(crm):
-    found = []
-    for deal_id in crm.every_deal_id():
-        deal_notes = crm.notes("dealId", deal_id)
-        for reservation in checks.open_reservations(deal_notes):
-            note = next(n for n, _, r in checks.ledger_entries(deal_notes) if r == reservation)
-            contact_id = checks.ledger_field(note, "contact")
-            contact_notes = crm.notes("contactId", contact_id) if contact_id else []
-            if reservation in checks.open_reservations(deal_notes + contact_notes):
-                found.append((contact_id, deal_id, reservation))
-    return found
-
-
-def deliver(item, message, crm, volt, clock, report):
+def deliver(item, message, crm, volt, ledger, clock, report):
     contact_id, deal_id = item["contact"]["id"], item["deal"]["id"]
     reservation = "r_" + uuid.uuid4().hex
 
@@ -127,18 +116,34 @@ def deliver(item, message, crm, volt, clock, report):
     def alert(kind):
         report["alerts"].append((kind, contact_id, deal_id, reservation))
 
+    def settle(message_text):
+        try:
+            ledger.drop(reservation, message_text)
+        except ServiceError as exc:
+            alert("ledger_left_open")
+            raise Stop(f"ledger_not_settled: {exc}") from exc
+
     def close(reason):
         try:
             write("not-sent", reason=reason)
-        except ServiceError:
+        except ServiceError as exc:
             alert("reservation_left_open")
+            raise Stop(f"crm_release_failed: {exc}") from exc
+        settle(f"release {reservation}: {reason}")
         return reason
 
     if not checks.in_window(clock(), item["zones"]):
         return "outside_hours"
+    entry = {"contact": contact_id, "deal": deal_id, "phone": item["phone"], "state": "reserved",
+             "at": clock().isoformat(), "run": os.environ.get("GITHUB_RUN_ID", "local")}
     try:
-        write("reserved", phone=item["phone"], run=os.environ.get("GITHUB_RUN_ID", "local"))
+        ledger.put(reservation, entry, f"reserve {reservation}")
     except ServiceError as exc:
+        raise Stop(f"ledger_reservation_failed: {exc}") from exc
+    try:
+        write("reserved", phone=item["phone"], run=entry["run"])
+    except ServiceError as exc:
+        settle(f"release {reservation}: crm_reservation_failed")
         raise Stop(f"crm_reservation_failed: {exc}") from exc
     try:
         fresh, notes = crm.contact(contact_id), crm.notes("contactId", contact_id)
@@ -146,10 +151,17 @@ def deliver(item, message, crm, volt, clock, report):
     except ServiceError as exc:
         alert("reservation_unconfirmed")
         raise Stop(f"crm_reservation_unconfirmed: {exc}") from exc
-    entries = list(checks.ledger_entries(notes + deal_notes))
-    if not any(r == reservation for _, _, r in entries) or checks.ledger([n for n, _, r in entries if r != reservation]):
+    entries = list(checks.ledger_entries(notes))
+    if not any(r == reservation for _, _, r in entries):
+        alert("reservation_unconfirmed")
+        raise Stop("crm_reservation_unconfirmed: the reservation note is not on the contact")
+    prior = checks.ledger([n for n, _, r in entries if r != reservation])
+    if prior == "already_sent":
+        return close(prior)
+    if prior:
         alert("reservation_conflict")
-        return close("reservation_unresolved")
+        close("reservation_unresolved")
+        raise Stop("open_reservation: reconcile it with the Volt chat before anything else is sent")
     parsed = checks.phone(fresh["phone"])
     changed = None if parsed[0] and parsed[0][0] == item["phone"] else "phone_changed"
     moved = "deal_changed" if deal["archived"] or deal["stage"] not in WHATSAPP["stages"] else None
@@ -174,6 +186,10 @@ def deliver(item, message, crm, volt, clock, report):
             write("uncertain", detail=str(exc)[:200])
         except ServiceError:
             pass
+        try:
+            ledger.put(reservation, {**entry, "state": "uncertain"}, f"uncertain {reservation}")
+        except ServiceError:
+            pass
         alert("send_uncertain")
         raise Stop("send_uncertain") from exc
     try:
@@ -182,12 +198,13 @@ def deliver(item, message, crm, volt, clock, report):
         alert("accepted_not_recorded")
         raise Stop(f"crm_accepted_not_recorded: {exc}") from exc
     report["sent"] += 1
+    settle(f"accepted {reservation}")
     return "sent"
 
 
-def run(mode, batch, services, crm, volt, kairon, agent, sender, clock):
+def run(mode, batch, services, crm, volt, kairon, agent, ledger, sender, clock):
     report = {"mode": mode, "started": clock().isoformat(timespec="seconds"), "deals": collections.Counter(),
-              "reasons": collections.Counter(), "sent": 0, "drafted": 0, "alerts": [], "stopped": None, "idle": False}
+              "reasons": collections.Counter(), "sent": 0, "drafted": 0, "alerts": [], "stopped": None, "idle": False, "ledger": ""}
     moment = clock()
     if mode == "send" and not any(checks.in_window(moment, [zone]) for zone in ALL_ZONES):
         report["idle"] = True
@@ -201,14 +218,20 @@ def run(mode, batch, services, crm, volt, kairon, agent, sender, clock):
         except ValueError as exc:
             raise Stop(f"kairon_exclusions_unverifiable: {exc}") from exc
         try:
-            pending = open_reservations(crm)
+            opened = ledger.read()
         except ServiceError as exc:
             if mode == "send":
-                raise Stop(f"reservations_unverifiable: {exc}") from exc
-            report["alerts"].append(("reservations_unverifiable", "", "", ""))
-            pending = []
-        report["alerts"] += [("reservation_open", contact_id, deal_id, reservation) for contact_id, deal_id, reservation in pending]
-        if mode == "send" and pending:
+                raise Stop(f"ledger_unverifiable: {exc}") from exc
+            report["alerts"].append(("ledger_unverifiable", "", "", ""))
+            opened = {}
+        if opened is None:
+            report["ledger"] = "created" if mode == "send" else "missing; the first send run creates it"
+            if mode == "send":
+                ledger.create()
+            opened = {}
+        report["alerts"] += [("reservation_open", str(e.get("contact", "")), str(e.get("deal", "")), r)
+                             for r, e in opened.items()]
+        if mode == "send" and opened:
             raise Stop("open_reservation: reconcile it with the Volt chat before anything else is sent")
         items = evaluate(crm, exclusions, services, moment, report)
         if mode == "send" and any(item["reason"] == "reservation_unresolved" for item in items):
@@ -216,7 +239,8 @@ def run(mode, batch, services, crm, volt, kairon, agent, sender, clock):
         scheduled = volt.scheduled()
         checked = failures = 0
         for item in checks.rotated([item for item in items if item["reason"] is None], moment, WHATSAPP["max_volt_checks"]):
-            if report["drafted"] >= batch:
+            done = report["sent"] if mode == "send" else report["drafted"]
+            if done >= batch or report["drafted"] >= batch * WHATSAPP["drafts_per_send"]:
                 item["reason"] = "batch_full"
                 continue
             if checked >= WHATSAPP["max_volt_checks"]:
@@ -239,7 +263,7 @@ def run(mode, batch, services, crm, volt, kairon, agent, sender, clock):
                 item["reason"] = "draft_review"
                 continue
             report["drafted"] += 1
-            item["reason"] = deliver(item, message, crm, volt, clock, report) if mode == "send" else "draft_ready"
+            item["reason"] = deliver(item, message, crm, volt, ledger, clock, report) if mode == "send" else "draft_ready"
     except Stop as exc:
         report["stopped"] = str(exc)
     except ServiceError as exc:
@@ -259,6 +283,8 @@ def summary(report):
         "- Deals: " + (", ".join(f"{k} {v}" for k, v in sorted(report["deals"].items())) or "none read"),
         f"- Drafted: {report['drafted']} · Accepted by Volt: {report['sent']}",
     ]
+    if report["ledger"]:
+        lines.append(f"- Ledger: {report['ledger']}")
     if report["stopped"]:
         lines.append(f"- **Stopped:** {report['stopped']}")
     lines += ["", "| Result | Contacts |", "| --- | --- |"] + [f"| {k} | {v} |" for k, v in sorted(report["reasons"].items())]
@@ -288,6 +314,7 @@ def main(argv=None):
         Volt(env["VOLT_API_KEY"], env["DA_WHATSAPP_VOLT_INSTANCE_ID"].strip(), can_send=sending),
         Kairon(env["KAIRON_API_KEY"]),
         Agent(env["AGENT_URL"], env["DA_WHATSAPP_DRAFT_SECRET"]),
+        Ledger(env.get("GITHUB_REPOSITORY", ""), env.get("GITHUB_TOKEN", ""), sending, (env.get("DA_WHATSAPP_DEFAULT_BRANCH") or "").strip()),
         checks.digits(env["DA_WHATSAPP_SENDER"]),
         lambda: dt.datetime.now(dt.timezone.utc),
     )
