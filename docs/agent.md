@@ -91,6 +91,15 @@ it after writing any `AgentTask`.
   health, so a task running under a session nobody recorded is visible.
 - **`AGENT_BRIDGE_SECRET` unset refuses rather than opens.**
 
+### `POST /internal/crm/whatsapp-draft`
+
+Drafts the first WhatsApp for one DA contact for the job in `beroki-leads/whatsapp`
+(`beroki-leads/WHATSAPP.md`). **One model call with no tools, not a session**: the
+root's tools write to the CRM, and the drafter must not. `draftProblem` turns a draft
+with a link, price, promise, attachment, invented number, no name, no project or not
+one question into `review`. A failed call is `502`. Its own secret,
+`DA_WHATSAPP_DRAFT_SECRET`; unset answers `503`.
+
 ### `POST /internal/crm/verify-key`
 
 Probes a candidate Context key → `valid`/`invalid`/`unknown`. No session, no model, no

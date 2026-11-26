@@ -1,0 +1,59 @@
+name: DA WhatsApp
+
+on:
+  schedule:
+    - cron: "17 * * * *"
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: dry-run reads and drafts. send needs DA_WHATSAPP_SEND_ENABLED=true and the default branch.
+        type: choice
+        options: [dry-run, send]
+        default: dry-run
+
+concurrency:
+  group: da-whatsapp
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  run:
+    name: First WhatsApp to DA contacts
+    if: github.event_name == 'workflow_dispatch' || vars.DA_WHATSAPP_SEND_ENABLED == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    environment: da-whatsapp
+    permissions:
+      contents: write
+    defaults:
+      run:
+        working-directory: beroki-leads
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: beroki-leads/whatsapp/requirements.txt
+      - run: python -m pip install --disable-pip-version-check -r whatsapp/requirements.txt
+      - name: Run
+        run: python -m whatsapp.run --mode "$MODE"
+        env:
+          MODE: ${{ github.event_name == 'schedule' && 'send' || inputs.mode }}
+          CRM_API_URL: ${{ vars.CRM_API_URL }}
+          CRM_API_KEY: ${{ secrets.CRM_API_KEY }}
+          VOLT_API_KEY: ${{ secrets.VOLT_API_KEY }}
+          KAIRON_API_KEY: ${{ secrets.KAIRON_API_KEY }}
+          AGENT_URL: ${{ vars.AGENT_URL }}
+          DA_WHATSAPP_DRAFT_SECRET: ${{ secrets.DA_WHATSAPP_DRAFT_SECRET }}
+          DA_WHATSAPP_SERVICES: ${{ vars.DA_WHATSAPP_SERVICES }}
+          DA_WHATSAPP_VOLT_INSTANCE_ID: ${{ vars.DA_WHATSAPP_VOLT_INSTANCE_ID }}
+          DA_WHATSAPP_SENDER: ${{ vars.DA_WHATSAPP_SENDER }}
+          DA_WHATSAPP_BATCH_SIZE: ${{ vars.DA_WHATSAPP_BATCH_SIZE }}
+          DA_WHATSAPP_SEND_ENABLED: ${{ vars.DA_WHATSAPP_SEND_ENABLED }}
+          DA_WHATSAPP_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

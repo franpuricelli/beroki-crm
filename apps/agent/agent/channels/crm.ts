@@ -1,10 +1,11 @@
-import { timingSafeEqual } from "node:crypto";
 import { EnrichmentStatus, Prisma } from "@crm/db";
 import { MAX_ATTEMPTS } from "@crm/db/agent-tasks";
 import { schemas } from "@crm/validation";
 import { eveTurnFailure } from "@crm/validation/eve-stream";
+import { whatsappDraftRequest } from "@crm/validation/whatsapp-draft";
 import { type ChannelFrom, defineChannel, GET, POST } from "eve/channels";
 import { z } from "zod";
+import { bearerMatches } from "../lib/bearer";
 import { persistBuilderInputRequest } from "../lib/builder-input";
 import { verifyKey } from "../lib/context-dev";
 import {
@@ -30,11 +31,13 @@ import {
 } from "../lib/dispatch";
 import { DISPATCH } from "../lib/dispatch-config";
 import { settle } from "../lib/enrichment";
+import { selectedModel } from "../lib/model";
 import { finishRun, runResultOf } from "../lib/run-runtime";
 import { attribute } from "../lib/session-purpose";
 import { createSlackChannel } from "../lib/slack-membership";
 import { reconcileStaleTasks } from "../lib/stale-tasks";
 import { completeTask, taskSubject } from "../lib/tasks";
+import { draftWhatsapp } from "../lib/whatsapp-draft";
 
 const TASK_MARKER = "task:";
 const STALE_QUEUE_MS = DISPATCH.sweep.staleQueueMs;
@@ -77,15 +80,7 @@ function isInputResponseDelivery(
 }
 
 function authorised(request: Request): boolean {
-	const secret = process.env.AGENT_BRIDGE_SECRET?.trim();
-	if (!secret) return false;
-	const header = request.headers.get("authorization");
-	if (!header?.startsWith("Bearer ")) return false;
-	const candidate = Buffer.from(header.slice("Bearer ".length));
-	const expected = Buffer.from(secret);
-	if (candidate.length !== expected.length) return false;
-
-	return timingSafeEqual(candidate, expected);
+	return bearerMatches(request, process.env.AGENT_BRIDGE_SECRET);
 }
 
 export function taskToken(taskId: string): string {
@@ -268,6 +263,40 @@ export default defineChannel({
 			}
 
 			return Response.json(await verifyKey(apiKey));
+		}),
+
+		POST("/internal/crm/whatsapp-draft", async (request) => {
+			const secret = process.env.DA_WHATSAPP_DRAFT_SECRET;
+			if (!secret?.trim()) {
+				return Response.json(
+					{ error: "WhatsApp drafting is not configured." },
+					{ status: 503 },
+				);
+			}
+			if (!bearerMatches(request, secret)) {
+				return new Response("Unauthorized", { status: 401 });
+			}
+
+			const parsed = whatsappDraftRequest.safeParse(
+				await request.json().catch(() => null),
+			);
+			if (!parsed.success) {
+				return Response.json(
+					{ error: "The draft request did not match." },
+					{ status: 400 },
+				);
+			}
+
+			try {
+				const { model } = await selectedModel();
+				return Response.json(await draftWhatsapp(parsed.data, model));
+			} catch (error) {
+				const name = error instanceof Error ? error.name : "unknown error";
+				return Response.json(
+					{ error: `The drafting model failed: ${name}` },
+					{ status: 502 },
+				);
+			}
 		}),
 	],
 
